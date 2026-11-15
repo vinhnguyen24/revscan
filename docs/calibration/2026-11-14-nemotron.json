@@ -1,0 +1,275 @@
+{
+  "provider": "openai:ollama/nemotron-3-ultra (gateway S3)",
+  "model_key": "cloud-fast",
+  "note": "Frontier comparison; max_tokens=3000, reasoning_effort=low, repeat=3",
+  "fit": {
+    "k": 1.8928,
+    "median": 2.0709,
+    "n": 9,
+    "min": 1.1422,
+    "max": 3.7384,
+    "spread": 3.27
+  },
+  "rows": [
+    {
+      "file": "/mnt/c/Program Files/WinRAR/WinRAR.exe",
+      "name": "WinRAR.exe",
+      "kind": "native",
+      "size": 2461336,
+      "model_key": "cloud-fast",
+      "model_seconds": 70.3,
+      "workload_seconds": 11.963,
+      "tool_seconds": 27.555951187792196,
+      "p_success": 0.85,
+      "markers": [],
+      "findings": 3,
+      "measured": 14.42,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 22947,
+        "completion_tokens": 864,
+        "total_tokens": 23811,
+        "prompt_tokens_details": {
+          "cached_tokens": 17536
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/shareware/sublime/sublime_text.exe",
+      "name": "sublime_text.exe",
+      "kind": "native",
+      "size": 7978104,
+      "model_key": "cloud-fast",
+      "model_seconds": 84.1,
+      "workload_seconds": 7.449,
+      "tool_seconds": 36.97409937662381,
+      "p_success": 0.85,
+      "markers": [],
+      "findings": 0,
+      "measured": 10.97,
+      "success": false,
+      "successes": 0,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 23132,
+        "completion_tokens": 433,
+        "total_tokens": 23565,
+        "prompt_tokens_details": {
+          "cached_tokens": 17536
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/Portable.Licensing.dll",
+      "name": "Portable.Licensing.dll",
+      "kind": "dotnet",
+      "size": 1442816,
+      "model_key": "cloud-fast",
+      "model_seconds": 29.0,
+      "workload_seconds": 9.59,
+      "tool_seconds": 2.113059071549643,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 7,
+      "measured": 13.09,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 25100,
+        "completion_tokens": 613,
+        "total_tokens": 25713,
+        "prompt_tokens_details": {
+          "cached_tokens": 21920
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/Cryptlex.LexActivator.dll",
+      "name": "Cryptlex.LexActivator.dll",
+      "kind": "dotnet",
+      "size": 60200,
+      "model_key": "cloud-fast",
+      "model_seconds": 26.6,
+      "workload_seconds": 8.869,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 4,
+      "measured": 10.13,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 12843,
+        "completion_tokens": 690,
+        "total_tokens": 13533,
+        "prompt_tokens_details": {
+          "cached_tokens": 8768
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/Syncfusion.Licensing.dll",
+      "name": "Syncfusion.Licensing.dll",
+      "kind": "dotnet",
+      "size": 444928,
+      "model_key": "cloud-fast",
+      "model_seconds": 40.8,
+      "workload_seconds": 10.288,
+      "tool_seconds": 2.0,
+      "p_success": 0.9,
+      "markers": [],
+      "findings": 3,
+      "measured": 22.03,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 14770,
+        "completion_tokens": 802,
+        "total_tokens": 15572,
+        "prompt_tokens_details": {
+          "cached_tokens": 8768
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/TrialMaker.Licensing.Premium.dll",
+      "name": "TrialMaker.Licensing.Premium.dll",
+      "kind": "dotnet",
+      "size": 749568,
+      "model_key": "cloud-fast",
+      "model_seconds": 139.9,
+      "workload_seconds": 9.677,
+      "tool_seconds": 62.0,
+      "p_success": 0.55,
+      "markers": [],
+      "findings": 3,
+      "measured": 20.04,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 25124,
+        "completion_tokens": 621,
+        "total_tokens": 25745,
+        "prompt_tokens_details": {
+          "cached_tokens": 21920
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/IntelliLock.LicenseManager.dll",
+      "name": "IntelliLock.LicenseManager.dll",
+      "kind": "dotnet",
+      "size": 90624,
+      "model_key": "cloud-fast",
+      "model_seconds": 52.4,
+      "workload_seconds": 7.827,
+      "tool_seconds": 2.0,
+      "p_success": 0.4,
+      "markers": [],
+      "findings": 1,
+      "measured": 18.25,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 12009,
+        "completion_tokens": 601,
+        "total_tokens": 12610,
+        "prompt_tokens_details": {
+          "cached_tokens": 8768
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/LicenseSpring.NetSDK.dll",
+      "name": "LicenseSpring.NetSDK.dll",
+      "kind": "dotnet",
+      "size": 404040,
+      "model_key": "cloud-fast",
+      "model_seconds": 27.3,
+      "workload_seconds": 12.468,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 7,
+      "measured": 46.61,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 27325,
+        "completion_tokens": 860,
+        "total_tokens": 28185,
+        "prompt_tokens_details": {
+          "cached_tokens": 21920
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/SoftActivate.Licensing.dll",
+      "name": "SoftActivate.Licensing.dll",
+      "kind": "dotnet",
+      "size": 86528,
+      "model_key": "cloud-fast",
+      "model_seconds": 40.4,
+      "workload_seconds": 8.136,
+      "tool_seconds": 2.0,
+      "p_success": 0.9,
+      "markers": [],
+      "findings": 3,
+      "measured": 19.01,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 12376,
+        "completion_tokens": 626,
+        "total_tokens": 13002,
+        "prompt_tokens_details": {
+          "cached_tokens": 8768
+        }
+      }
+    },
+    {
+      "file": "/tmp/opencode/dlls/ThinkSharp.Licensing.dll",
+      "name": "ThinkSharp.Licensing.dll",
+      "kind": "dotnet",
+      "size": 26624,
+      "model_key": "cloud-fast",
+      "model_seconds": 40.1,
+      "workload_seconds": 7.433,
+      "tool_seconds": 2.0,
+      "p_success": 0.9,
+      "markers": [],
+      "findings": 2,
+      "measured": 13.66,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "ollama/nemotron-3-ultra",
+      "usage": {
+        "prompt_tokens": 7509,
+        "completion_tokens": 617,
+        "total_tokens": 8126,
+        "prompt_tokens_details": {
+          "cached_tokens": 4384
+        }
+      }
+    }
+  ]
+}

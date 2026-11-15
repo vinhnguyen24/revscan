@@ -1,0 +1,22 @@
+# runtime data and secrets
+server/data/
+scratch/
+.env
+.env.*
+
+# build output
+*.protected.exe
+*.protected.dll
+sdk/cpp/build/
+bin/
+obj/
+
+# python
+__pycache__/
+*.pyc
+
+# node
+node_modules/
+
+# web runtime data (sqlite, outbox, uploads)
+web-data/

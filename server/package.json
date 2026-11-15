@@ -1,0 +1,14 @@
+{
+  "name": "trapkey-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TrapKey license server - zero dependencies",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test/flow.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

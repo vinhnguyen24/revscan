@@ -1,0 +1,15 @@
+{
+  "name": "trapkey",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Scan a Windows app: how long until an AI agent cracks it?",
+  "scripts": {
+    "start": "node web/server.js",
+    "test": "python3 tests/test_scan.py && python3 tests/test_calibrate.py && python3 tests/test_protect.py && python3 tests/test_compare.py && python3 tests/test_disasm.py && python3 tests/test_benchmark.py && node tests/test_web.js && node server/test/flow.test.js",
+    "scan": "python3 scan.py",
+    "calibrate": "python3 calibrate.py"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

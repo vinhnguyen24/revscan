@@ -1,0 +1,16 @@
+{
+  "files": {
+    "App.exe": {
+      "expect": ["CheckLicense", "0x140012340"],
+      "allow_none": false
+    },
+    "NoLicense.exe": {
+      "expect": [],
+      "allow_none": true
+    },
+    "LegacyTool.exe": [
+      "ValidateSerial",
+      "Legacy.Licensing.KeyChecker::VerifyKey"
+    ]
+  }
+}

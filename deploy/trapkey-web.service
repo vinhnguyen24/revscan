@@ -1,0 +1,40 @@
+[Unit]
+Description=TrapKey web (scan + dashboard)
+After=network.target
+
+[Service]
+Type=simple
+User=trapkey
+Group=trapkey
+WorkingDirectory=/opt/trapkey
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=7200
+Environment=DATA_DIR=/var/lib/trapkey
+Environment=PUBLIC_URL=https://trapkey.dev
+Environment=TRAPKEY_TLS=1
+# Environment=STRIPE_SECRET_KEY=...
+# Environment=STRIPE_WEBHOOK_SECRET=...   (required; webhook returns 503 without it)
+# Environment=STRIPE_PRICE_PRO=price_...
+# Environment=STRIPE_PRICE_TEAM=price_...
+# Environment=MAX_CONCURRENT_SCANS=4
+# Environment=RESEND_API_KEY=...
+# Environment=ADMIN_KEY=...          (else generated into DATA_DIR/admin.key)
+# Environment=OPENAI_API_KEY=...     (enables --ai)
+# Environment=OPENAI_BASE_URL=https://aiproviders.s3corp.com.vn/v1
+# Environment=TRAPKEY_AI_MODEL=ollama/gpt-oss:120b
+# Environment=TRAPKEY_AI_MAX_TOKENS=1200
+# Environment=TRAPKEY_AI_REASONING_EFFORT=low
+# Environment=TRAPKEY_CALIBRATION_K=0.2758
+# Environment=TRAPKEY_CALIBRATION_MODEL=cloud-fast
+ExecStart=/usr/bin/node web/server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/trapkey
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

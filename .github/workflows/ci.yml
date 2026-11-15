@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows has the real PE/.NET binaries; Ubuntu still covers the pure
+        # logic (fit math, ident, report JSON, web, license server).
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run tests
+        env:
+          # Windows has no python3.exe; config.js also picks this up.
+          PYTHON: python
+        run: |
+          python tests/test_scan.py
+          python tests/test_calibrate.py
+          python tests/test_protect.py
+          python tests/test_compare.py
+          python tests/test_disasm.py
+          python tests/test_benchmark.py
+          node tests/test_web.js
+          node server/test/flow.test.js
