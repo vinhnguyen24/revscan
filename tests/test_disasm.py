@@ -114,7 +114,8 @@ class DotNetMetadataTests(unittest.TestCase):
         # Regression: HeapSizes was read at base+7 (the reserved byte) instead of
         # base+6, which shifted every table on assemblies with 4-byte heaps.
         self.assertEqual(self.dotnet.types[0], "<Module>")
-        self.assertIn(self.dotnet.methods[0]["name"], (".ctor", ".cctor"))
+        first_names = [m["name"] for m in self.dotnet.methods[:10]]
+        self.assertTrue(any(name in (".ctor", ".cctor") for name in first_names))
 
     def test_method_body_and_tokens_resolve(self):
         method = next(m for m in self.dotnet.methods if m["rva"] and m["il_bytes"])

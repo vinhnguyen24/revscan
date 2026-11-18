@@ -270,12 +270,26 @@ Effect: `WinRAR.exe` 70 s → **39 s**, `sublime_text.exe` 84 s → **50 s**.
 - The gateway, model, and plan affect `k`. Re-run when either changes; do not copy
   this number to a different model.
 
-### Model comparison (2026-11-14)
+### Model comparison (2026-11-14, cập nhật 2026-11-16)
 
 | Model | n | `k` | Spread | Notes |
 |---|---:|---:|---:|---|
-| `ollama/gpt-oss:120b` | 10 | 0.2758 | 1.87x | fastest successful; current `.env` |
+| `ollama/gpt-oss:120b` | 10 | 0.2758 | 1.87x | run 3, `.env` cũ |
 | `ollama/nemotron-3-ultra` | 9 | 1.8928 | 3.27x | frontier; LicenseSpring outlier (47 s) |
+| `gemini-3.6-flash` | 3 | 0.9437 | 4.15x | **provisional**; free tier 5 req/phút nên bị skip 1 file, chưa đủ mẫu |
+
+`gemini-3.6-flash` (AI Studio, `TRAPKEY_AI_THINKING_BUDGET=0`) trả lời 2–7 s/lần
+trên 3 file thành công (`System.Core.dll`, `System.Security.dll`, `WinRAR.exe`),
+`mscorlib.dll`/`System.dll` trả `none`, `notepad.exe` không có license. `k=0.9437`
+gần 1.0 về mặt định lượng, nhưng spread 4.15x > 3x nên **đừng dùng để bán** cho tới
+khi chạy lại với corpus ≥10 file và `--repeat 5` (free tier cần `--pause 13`).
+
+`.env` hiện dùng `gemini-3.1-flash-lite` (3.6-flash đã cạn quota ngày), nên `k` đang
+để trống = 1.0; chỉ bật `k=0.9437` khi quay lại đúng model 3.6-flash.
+
+`gemini-3.8-flash` (2026-11-16) chỉ trả lời được qua `streamGenerateContent`: non-stream
+treo >150s, streaming trả "OK" sau 47s, và scan `notepad.exe` mất **276s** với
+`TRAPKEY_AI_TIMEOUT=300`. Không dùng làm model mặc định cho demo; giữ để đo chất lượng.
 
 The two differ by ~6.9x. The cost model's `cloud-fast` rates are optimistic for a
 cautious frontier model and fast for an efficient open model. For the product's
@@ -331,3 +345,44 @@ names carrying a context word (`name`, `mode`, `value`, `size`, `rights`, ...).
 "named licence functions" branch. `TrialDivisionBounds` still matches (`trial` is
 strong); that is a known, accepted false positive.
 
+
+
+### Run 4 (2026-11-16) — OpenCode Go / `gpt-6-luna`
+
+Provider: `openai:gpt-6-luna` through `https://opencode.ai/inference/go/openai/v1`,
+`--repeat 3`, 11 files, **7 successes**. Pack includes code (IL/objdump); prompt
+tokens include Go's implicit cache reads.
+
+| File | Kind | Prompt | Completion | Measured | Workload | k |
+|---|---|---:|---:|---:|---:|---:|
+| `IntelliLock.Licensing.dll` | .NET | 2,329 | 279 | 7.18 s | 3.23 s | 2.22 |
+| `ThinkSharp.Licensing.dll` | .NET | 4,853 | 199 | 3.51 s | 2.70 s | 1.30 |
+| `Cryptlex.LexActivator.dll` | .NET | 12,174 | 307 | 7.91 s | 4.75 s | 1.66 |
+| `Licensing.Net.dll` | .NET | 10,961 | 841 | 11.63 s | 10.22 s | 1.14 |
+| `System.Evaluation.dll` (TrialMaker) | .NET | 21,142 | 228 | 4.94 s | 5.04 s | 0.98 |
+| `Portable.Licensing.dll` | .NET | 20,841 | 353 | 6.19 s | 6.32 s | 0.98 |
+| `System.Core.dll` | .NET | 19,704 | 320 | 5.83 s | 5.83 s | 1.00 |
+
+**Fit: `k = 1.2673`, n=7, median 1.1376, range 0.9793–2.2243, spread 2.27x.**
+Spread < 3x and n≥7, so this is the first number since run 3 usable for reports.
+`IntelliLock`/`Syncfusion`/`System.Security`/`WinRAR`/`notepad` returned `none`
+in at least one repeat and stay out of the fit; they still calibrate failure rate.
+
+Apply:
+
+```bash
+TRAPKEY_CALIBRATION_K=1.2673 TRAPKEY_CALIBRATION_MODEL=cloud-fast python3 scan.py App.exe
+```
+
+Effect on `notepad.exe`: best case **72.4 s → 85.9 s**, risk 21 → 20. Worst case
+is unchanged because `TRAPKEY_CALIBRATION_MODEL=cloud-fast` scopes the multiplier
+to the measured band only.
+
+**DeepSeek V4.1 Flash** on the same corpus with `TRAPKEY_AI_MAX_TOKENS=1200` failed
+5/7 licensing DLLs with `returned no content` (reasoning tokens ate the budget).
+Its fit was n=2, spread 2.61x, so **do not use** `k=1.0807`. If you switch to
+DeepSeek, raise `TRAPKEY_AI_MAX_TOKENS` to 4000 and re-run before trusting it.
+
+**Caveat:** Go's implicit cache makes `prompt_tokens` include cached reads
+(e.g. 21,142 prompt / 228 new); workload is normalised the same way as run 3, so
+`k` remains a speed factor, not a price. Re-fit when the model or pack changes.

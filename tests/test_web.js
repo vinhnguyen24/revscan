@@ -21,6 +21,7 @@ process.env.DATA_DIR = TMP;
 process.env.ADMIN_KEY = 'test-admin-key';
 
 const config = require('../web/config');
+const views = require('../web/views');
 const { createServer } = require('../web/server');
 
 function findBinary(name) {
@@ -170,11 +171,11 @@ test('compare form renders a diff and rejects bad JSON', async () => {
 });
 
 test('compare timeout is a 504, not a bad-report 400', async () => {
-  const script = path.join(TMP, 'slow-python.sh');
-  fs.writeFileSync(script, '#!/bin/sh\nsleep 2\n', { mode: 0o755 });
-  const savedPython = config.python;
+  const script = path.join(TMP, 'slow_cli.py');
+  fs.writeFileSync(script, 'import time\ntime.sleep(2)\n');
+  const savedCli = config.cli;
   const savedTimeout = config.compareTimeoutMs;
-  config.python = script;
+  config.cli = script;
   config.compareTimeoutMs = 100;
   try {
     const before = { crack_seconds_best: 70, p_success: 0.35, findings: [] };
@@ -186,7 +187,7 @@ test('compare timeout is a 504, not a bad-report 400', async () => {
     assert.equal(r.status, 504, r.text);
     assert.equal(r.json.error.code, 'TIMEOUT');
   } finally {
-    config.python = savedPython;
+    config.cli = savedCli;
     config.compareTimeoutMs = savedTimeout;
   }
 });
@@ -511,6 +512,81 @@ test('admin page rejects a wrong key POST', async () => {
   assert.equal(r.status, 401);
 });
 
+test('malformed JSON on JSON APIs is a 400, not a 500', async () => {
+  // `/api/compare` wraps readJson locally; auth, checkout and admin did not, so
+  // they answered 500 INTERNAL for a body the client can fix.
+  const cases = [
+    ['/api/auth/request?json=1', { 'content-type': 'application/json' }],
+    ['/api/billing/checkout', { 'content-type': 'application/json' }],
+    ['/api/admin/grant', { 'content-type': 'application/json', 'x-admin-key': 'test-admin-key' }],
+  ];
+  for (const [url, headers] of cases) {
+    const r = await call('POST', url, { body: '{oops', headers });
+    assert.equal(r.status, 400, `${url}: ${r.status} ${r.text}`);
+    assert.equal(r.json.error.code, 'BAD_JSON', url);
+  }
+});
+
+test('empty upload is a 400, not a 500', async () => {
+  const r = await call('POST', '/api/scan', {
+    body: '',
+    headers: { 'x-filename': 'app.exe', 'content-type': 'application/octet-stream' },
+  });
+  assert.equal(r.status, 400, r.text);
+  assert.equal(r.json.error.code, 'EMPTY');
+});
+
+test('account deletion removes the email from magic links and events', async () => {
+  const email = 'erase-me@studio.test';
+  const req = await call('POST', '/api/auth/request?json=1', {
+    body: JSON.stringify({ email }),
+    headers: { 'content-type': 'application/json' },
+  });
+  assert.equal(req.status, 200, req.text);
+  const devUrl = req.json.data.devUrl.replace(base, '');
+
+  const savedCookie = cookie;
+  const verify = await call('GET', devUrl);
+  assert.equal(verify.status, 303);
+  const del = await call('POST', '/api/account/delete');
+  assert.equal(del.status, 303);
+  cookie = savedCookie;
+
+  const { db } = server.trapkey;
+  assert.equal(db.prepare('SELECT COUNT(*) AS c FROM accounts WHERE email=?').get(email).c, 0);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS c FROM magic_links WHERE email=?').get(email).c,
+    0,
+    'pending magic links must not outlive the account'
+  );
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS c FROM events WHERE payload LIKE ?').get(`%${email}%`).c,
+    0,
+    'the email must not survive inside an audit payload'
+  );
+});
+
+test('upload sweeper survives a missing directory and removes old files', async () => {
+  const dir = config.uploadsDir;
+  fs.mkdirSync(dir, { recursive: true });
+  const old = path.join(dir, 'sweep-probe.bin');
+  fs.writeFileSync(old, 'x');
+  const past = Date.now() - 2 * 3_600_000;
+  fs.utimesSync(old, past / 1000, past / 1000);
+  server.trapkey.sweepUploads(3_600_000);
+  assert.equal(fs.existsSync(old), false, 'an upload older than the sweep window is deleted');
+
+  // A deleted/unmounted DATA_DIR used to throw from the interval callback and
+  // take the web process down.
+  const parked = `${dir}.parked`;
+  fs.renameSync(dir, parked);
+  try {
+    assert.doesNotThrow(() => server.trapkey.sweepUploads(3_600_000));
+  } finally {
+    fs.renameSync(parked, dir);
+  }
+});
+
 test('invoice-mode checkout records the request instead of failing', async () => {
   const r = await call('POST', '/api/billing/checkout', {
     body: JSON.stringify({ plan: 'pro' }),
@@ -788,6 +864,10 @@ test('AI quota errors are reported as AI_QUOTA and refund the credit', async () 
     // discover the same 429. The window comes from the provider's retry-after.
     assert.equal(server.trapkey.ai.coolingDown(), true);
     assert.ok(server.trapkey.ai.until() > Date.now(), 'cooldown has a deadline');
+    assert.ok(
+      server.trapkey.ai.until() <= Date.now() + 3_600_000 + 5_000,
+      'a provider-controlled value must not pause AI for more than an hour'
+    );
 
     const page = await call('GET', '/scan');
     assert.match(page.text, /value="ai"\s+disabled/, 'the AI radio is disabled while cooling');
@@ -863,8 +943,45 @@ test('unknown route is a clean 404', async () => {
   assert.equal(page.status, 404);
 });
 
-/* -------------------------------- runner -------------------------------- */
+test('compare page escapes the measured model', () => {
+  const side = (sha, measured = null) => ({
+    file: 'App.exe',
+    kind: 'dotnet',
+    size: 1,
+    sha256: sha,
+    crack_seconds_best: 70,
+    crack_seconds_worst: 140,
+    p_success: 0.5,
+    risk: 20,
+    read_budget_tokens: 10,
+    markers: [],
+    findings: [],
+    measured,
+  });
+  const result = {
+    verdict: 'better',
+    original: side('a'.repeat(64), { seconds: 8.5, success: true }),
+    protected: side('b'.repeat(64), { seconds: 12, success: true }),
+    delta: { seconds_best: 15, seconds_worst: 30, p_success: -0.2, risk: -10 },
+    ai: {
+      delta_seconds: 3.5,
+      // The model comes from an uploaded report JSON, so it is untrusted.
+      model: '<img src=x onerror=alert(1)>',
+      verdict: 'measured: protected copy took +3.50s longer',
+    },
+    fixed_findings: [],
+    new_findings: [],
+    protection_added: [],
+    changed_findings: [],
+    protection_removed: [],
+    notes: [],
+  };
+  const html = views.comparePage({ result });
+  assert.ok(!html.includes('<img src=x'), 'the model must not become markup');
+  assert.ok(html.includes('&lt;img src=x'), 'the model is still shown, escaped');
+});
 
+/* -------------------------------- runner -------------------------------- */
 (async () => {
   // This suite uploads far more than 10 files in a minute; the upload rate
   // limit has its own behaviour and is not what these tests exercise.
@@ -894,6 +1011,11 @@ test('unknown route is a clean 404', async () => {
 
   console.log(`\n${tests.length - failed - skipped} passed, ${failed} failed, ${skipped} skipped`);
   server.close();
-  fs.rmSync(TMP, { recursive: true, force: true });
+  try {
+    server.trapkey?.db?.close();
+  } catch {}
+  try {
+    fs.rmSync(TMP, { recursive: true, force: true });
+  } catch {}
   process.exit(failed ? 1 : 0);
 })();

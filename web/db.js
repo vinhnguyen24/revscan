@@ -176,11 +176,12 @@ function cleanup(db, nowMs = now()) {
   const run = (sql, ...params) => Number(db.prepare(sql).run(...params).changes || 0);
   return tx(db, () => ({
     sessions: run('DELETE FROM sessions WHERE expires_at < ?', nowMs),
-    magic_links: run(
-      'DELETE FROM magic_links WHERE expires_at < ? OR (used = 1 AND created_at < ?)',
-      nowMs,
-      nowMs - 86_400_000
-    ),
+    // Split from the `used` branch: an OR keeps the statement on a table scan,
+    // while this delete alone can use idx_magic_expires. The `used` branch is a
+    // scan either way, but magic_links only holds pending links, so that is fine.
+    magic_links:
+      run('DELETE FROM magic_links WHERE expires_at < ?', nowMs) +
+      run('DELETE FROM magic_links WHERE used = 1 AND created_at < ?', nowMs - 86_400_000),
     scans: run('DELETE FROM scans WHERE created_at < ?', nowMs - retentionMs),
     events: run('DELETE FROM events WHERE created_at < ?', nowMs - retentionMs),
     anon_scans: run('DELETE FROM anon_scans WHERE day < ?', anonCutoff),

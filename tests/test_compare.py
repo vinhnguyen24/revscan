@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT / "cli"))
 from scanner.compare import (  # noqa: E402
     classify_findings,
     from_reports,
+    render,
     verdict_for,
     verdict_sentence,
 )
@@ -138,8 +139,21 @@ class CompareErrorTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 2)
             self.assertIn("not a PE", proc.stderr)
             self.assertEqual(proc.stdout.strip(), "")
+
+            empty = tmp / "empty.exe"
+            empty.write_bytes(b"")
+            proc = run_cli("compare", str(empty), str(empty))
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn("not a PE", proc.stderr)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_directory_is_not_reported_as_missing(self):
+        with tempfile.TemporaryDirectory(prefix="trapkey-compare-dir-") as tmp:
+            proc = run_cli("compare", tmp, tmp)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("is not a file", proc.stderr)
+        self.assertNotIn("not found", proc.stderr)
 
 
 @unittest.skipUnless(os.path.exists(NOTEPAD), "no Windows binary")
@@ -169,6 +183,126 @@ class CompareReportsTests(unittest.TestCase):
         self.assertEqual(data["delta"]["risk"], -18)
         self.assertEqual([f["id"] for f in data["fixed_findings"]], ["pdb-path"])
         self.assertEqual(data["verdict"], "better")
+
+    def test_measured_block_is_separate_from_the_cost_model(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {
+            "seconds": 8.5,
+            "provider": "openai",
+            "model": "gpt-6-luna",
+            "success": True,
+            "grounded": True,
+            "usage": {"prompt_tokens": 100, "completion_tokens": 7},
+            "attempts": 3,
+        }
+        after["measured"] = {
+            "seconds": 13.0,
+            "provider": "openai",
+            "model": "gpt-6-luna",
+            "success": True,
+            "grounded": True,
+            "usage": {"prompt_tokens": 110, "completion_tokens": 9},
+            "attempts": 3,
+        }
+        data = from_reports(before, after)
+        self.assertEqual(data["ai"]["delta_seconds"], 4.5)
+        self.assertTrue(data["ai"]["original_success"])
+        self.assertTrue(data["ai"]["protected_success"])
+        self.assertIn("took +4.50s longer", data["ai"]["verdict"])
+        self.assertEqual(data["ai"]["attempts"], 3)
+        self.assertTrue(any("median of 3 rounds" in n for n in data["notes"]))
+        # The cost-model delta is untouched; the AI number is a separate axis.
+        self.assertEqual(data["delta"]["seconds_best"], 15.0)
+        text = render(data)
+        self.assertIn("AI measured 8.5s", text)
+        self.assertIn("ai measured 8.50s -> 13.00s", text)
+
+    def test_ai_no_change_does_not_confirm_static_better(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": 8.5, "model": "m", "success": True, "attempts": 3}
+        after["measured"] = {"seconds": 8.9, "model": "m", "success": True, "attempts": 3}
+        data = from_reports(before, after)
+        self.assertIn("no meaningful change", data["ai"]["verdict"])
+        self.assertTrue(any("does not confirm" in n for n in data["notes"]))
+
+    def test_ai_one_round_is_not_a_significant_change(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": 8.5, "model": "m", "success": True}
+        after["measured"] = {"seconds": 20.0, "model": "m", "success": True}
+        data = from_reports(before, after)
+        self.assertIn("within noise", data["ai"]["verdict"])
+        self.assertNotIn("longer", data["ai"]["verdict"])
+        self.assertTrue(any("does not confirm" in n for n in data["notes"]))
+
+    def test_measured_on_one_side_only_is_a_note(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": 8.5, "model": "m", "success": True}
+        data = from_reports(before, after)
+        self.assertIsNone(data["ai"])
+        self.assertTrue(any("one side only" in n for n in data["notes"]))
+
+    def test_ai_protected_no_longer_finds_the_check(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": 8.5, "model": "m", "success": True}
+        after["measured"] = {"seconds": 2.0, "model": "m", "success": False}
+        data = from_reports(before, after)
+        self.assertIn("no longer yields a find", data["ai"]["verdict"])
+
+    def test_bad_measured_block_is_ignored(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": "not-a-number"}
+        after["measured"] = {"seconds": 9.8}
+        data = from_reports(before, after)
+        self.assertIsNone(data["ai"])
+        self.assertTrue(any("one side only" in n for n in data["notes"]))
+
+    def test_bad_attempts_is_ignored_not_rejected(self):
+        # `attempts` is display-only; int(dict)/int("many")/int(inf) used to
+        # escape as a TypeError and reject a report that was otherwise valid.
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": 8.5, "attempts": {"x": 1}}
+        after["measured"] = {"seconds": 9.0, "attempts": "many"}
+        data = from_reports(before, after)
+        self.assertIsNotNone(data["ai"])
+        self.assertEqual(data["ai"]["attempts"], 1)
+
+    def test_rounds_note_is_per_side(self):
+        before = report(70.0, 0.35, 21, "a" * 64, [])
+        after = report(85.0, 0.05, 3, "b" * 64, [])
+        before["measured"] = {"seconds": 8.5, "success": True, "attempts": 1}
+        after["measured"] = {"seconds": 20.0, "success": True, "attempts": 3}
+        data = from_reports(before, after)
+        self.assertTrue(any("1 vs 3 rounds" in n for n in data["notes"]))
+        # One side has a single round, so the difference is not significant.
+        self.assertIn("within noise", data["ai"]["verdict"])
+
+    def test_measure_side_times_successful_rounds_only(self):
+        import scanner.ai as ai_module
+        from scanner.compare import _measure_side
+
+        rounds = iter([
+            {"seconds": 8.0, "success": True, "grounded": True, "model": "m"},
+            {"seconds": 1.0, "success": False, "grounded": False, "model": "m"},
+            {"seconds": 10.0, "success": True, "grounded": True, "model": "m"},
+        ])
+        saved = ai_module.measure
+        ai_module.measure = lambda ev: next(rounds)
+        try:
+            combined = _measure_side(None, 3)
+        finally:
+            ai_module.measure = saved
+        # Median of the two successful rounds, not [8, 1, 10] = 8.
+        self.assertEqual(combined["seconds"], 9.0)
+        self.assertTrue(combined["success"])
+        self.assertEqual(combined["successes"], 2)
+        self.assertEqual(combined["attempts"], 3)
 
     def test_from_reports_rejects_a_non_report(self):
         with self.assertRaises(ValueError):
@@ -332,6 +466,8 @@ class CompareCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("not better protected", proc.stdout)
         self.assertIn("same sha256", proc.stderr)
+        # The caveat lives on stderr only; repeating it as a note was noise.
+        self.assertNotIn("both paths have the same sha256", proc.stdout)
 
 
 if __name__ == "__main__":

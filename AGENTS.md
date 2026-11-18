@@ -1,9 +1,9 @@
 # AGENTS.md — TrapKey
 
 > Ngữ cảnh master. Đọc file này trước khi mở code. Trạng thái phiên gần nhất:
-> `docs/HANDOFF_2026-11-14.md`. Quyết định kỹ thuật: `docs/CALIBRATION.md`, `docs/WEB_PLAN.md`.
+> `docs/HANDOFF_2026-11-16.md`. Quyết định kỹ thuật: `docs/CALIBRATION.md`, `docs/WEB_PLAN.md`.
 
-Cập nhật: 2026-11-14.
+Cập nhật: 2026-11-18.
 
 ---
 
@@ -29,18 +29,18 @@ thắng ở đó, và khách không trả tiền cho license verification.
 
 | Thành phần | Trạng thái |
 |---|---|
-| `scanner/` + `scan.py` | ✅ 27 test |
+| `scanner/` + `scan.py` | ✅ 34 test |
 | `calibrate.py` | ✅ 18 test |
-| `web/` (SaaS) | ✅ 40 test |
+| `web/` (SaaS) | ✅ 45 test |
 | `server/` (license, add-on) | ✅ 16 test |
 | `cli/trapkey.py protect` | ✅ 15 test, chạy trên PE thật |
-| `cli/trapkey.py compare` | ✅ 19 test, protect → rescan → diff |
+| `cli/trapkey.py compare` | ✅ 29 test, protect → rescan → diff (+ `--ai`) |
 | `scanner/il.py` + `scanner/native.py` | ✅ 14 test, IL + objdump xref trong evidence pack |
 | `benchmark.py` | ✅ 46 test, ground-truth harness (static + AI) |
 | `sdk/cpp` + `sdk/dotnet` | ⚠️ viết xong, **chưa compile** (không có MSVC) |
-| `--ai` với model thật | ⚠️ `ollama/*` cạn quota tuần; `cx/gpt-5.6-luna-review` chạy được, native còn yếu |
+| `--ai` với model thật | ✅ Mặc định OpenCode Go `gpt-6-luna` (~2.5–4.6s/scan, $0.10/$0.50 per 1M, **k=1.2673**); `deepseek-v4.1-flash` mạnh hơn cho native; Gemini 3.1-lite/3.6/3.8 là fallback; native vẫn yếu |
 
-Tổng: **195 test pass**, 0 dependency npm (objdump là optional, không phải dependency).
+Tổng: **217 test pass**, 0 dependency npm (objdump là optional, không phải dependency).
 
 ## 3. Bản đồ code
 
@@ -83,7 +83,7 @@ docs/                   SPEC, CALIBRATION, WEB_PLAN, ROADMAP, HANDOFF, calibrati
 
 ```bash
 npm start                                  # web, http://127.0.0.1:7200
-npm test                                   # 195 test (scan + calibrate + protect + compare + disasm + benchmark + web + license)
+npm test                                   # 217 test (scan + calibrate + protect + compare + disasm + benchmark + web + license)
 
 python3 scan.py App.exe                    # báo cáo
 python3 scan.py App.exe --json             # cho web/CI
@@ -98,6 +98,7 @@ python3 cli/trapkey.py protect App.exe --level 3      # strip PDB + payload v2
 python3 cli/trapkey.py protect App.exe --sig feed.sig --pubkey vendor.pem
 python3 cli/trapkey.py info App.protected.exe
 python3 cli/trapkey.py compare App.exe App.protected.exe --json  # before/after diff
+python3 cli/trapkey.py compare App.exe App.protected.exe --ai --repeat 3 --json  # đo thật cả 2 bản
 python3 cli/trapkey.py compare-reports before.json after.json --json  # web /compare dùng lệnh này
 
 python3 benchmark.py --corpus <dir> --labels labels.json --static
@@ -140,9 +141,14 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
 | `ADMIN_KEY` | admin (mặc định sinh vào `DATA_DIR/admin.key`) |
 | `STRIPE_SECRET_KEY` `STRIPE_WEBHOOK_SECRET` `STRIPE_PRICE_PRO/TEAM` | billing thật |
 | `RESEND_API_KEY` `MAIL_FROM` | email (không có → outbox file) |
-| `TRAPKEY_AI_PROVIDER` = `openai`\|`ollama`\|`anthropic` | `--ai` |
+| `TRAPKEY_AI_PROVIDER` = `openai`\|`ollama`\|`anthropic`\|`gemini` | `--ai` |
 | `OLLAMA_API_KEY` | Ollama Cloud (`https://ollama.com/v1`), không cần cài Ollama |
+| `GEMINI_API_KEY` (`GOOGLE_API_KEY`) | Google Gemini qua AI Studio; base mặc định `https://generativelanguage.googleapis.com/v1beta` |
+| `GEMINI_BASE_URL` | override base Gemini (mặc định `.../v1beta`) |
+| `TRAPKEY_AI_THINKING_BUDGET` | Gemini `thinkingBudget` (mặc định `0`; rỗng/`off` = để model tự quyết) |
+| `TRAPKEY_AI_TIMEOUT` | socket timeout cho 1 call `--ai` (mặc định 120s; `gemini-3.8-flash` cần ~300s và vẫn rất chậm) |
 | `OPENAI_BASE_URL` `OPENAI_API_KEY` `ANTHROPIC_API_KEY` `TRAPKEY_AI_MODEL` | `--ai` |
+| OpenCode Go | `OPENAI_BASE_URL=https://opencode.ai/inference/go/openai/v1` + `OPENAI_API_KEY=<Go key>`; model `gpt-6-luna` (rẻ), `deepseek-v4.1-flash`, `gemini-4-argon`, `gpt-5.6-luna`… |
 | `TRAPKEY_AI_MAX_TOKENS` | output budget cho `--ai` (mặc định 1200; reasoning model ăn hết 400) |
 | `TRAPKEY_AI_REASONING_EFFORT` | `low` cho model thinking (tuỳ gateway) |
 | `TRAPKEY_AI_CODE` | `0` để tắt IL/objdump trong evidence pack (batch không cần code) |
@@ -233,19 +239,48 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
   vẫn là lớp chặn replay cuối.
 - **AI cooldown toàn cục** chỉ set cho `AI_QUOTA`, cap 1h; `AI_AUTH`/`AI_MODEL` không
   được khoá AI 5 phút; static scan không bị ảnh hưởng.
+- **`readJson` lỗi phải map ở dispatch, không chỉ trong route `/api/compare`**: `BAD_JSON`
+  ném từ auth/checkout/admin grant từng trả 500 INTERNAL; `EMPTY`/`UPLOAD` cũng phải là
+  400 và quota đã refund trước khi lỗi ra tới đây.
+- **Xoá account phải xoá theo email, không chỉ account_id**: `magic_links` key theo email,
+  còn event `magic_link` ghi `account_id=NULL`; chỉ `DELETE ... WHERE account_id` để lại PII.
+  Scrub payload event (`{}`) và giữ row như audit ẩn danh.
+- **`compare` phải check magic `MZ` trước `collect()`**: file non-PE 200MB từng bị đọc 2 lần
+  + extract strings trước khi báo lỗi (~4.6s, 227MB RSS); giờ đọc 2 byte là đủ.
+- **Sweeper upload/tmp phải chịu được thư mục biến mất**: `readdirSync` ném ENOENT trong
+  timer callback từng làm sập web; test gọi trực tiếp qua `server.trapkey.sweepUploads`.
+- **OpenCode Go chặn UA mặc định của Python**: gọi `opencode.ai/inference/go/openai/v1`
+  bằng urllib không set `User-Agent`/`x-opencode-session` trả **403/1010** dù key đúng.
+  `_call_openai` set `trapkey/1.0` + session ngẫu nhiên; token OAuth trong OpenCode DB
+  hết hạn ~26 ngày, production nên dùng API key tạo ở Console → Go.
+- **`compare --ai` không được trộn measured với cost model**: `measured` là 1 round,
+  không gồm tool time; để riêng `delta`/`ai` và in “live measurement does not confirm”
+  khi static nói better mà measured không tăng. Case study Cryptlex: static +12.8s
+  nhưng measured **-1.19s**, cả hai vẫn tìm ra check → protect data-only chưa đủ.
+- **Median của `--repeat` chỉ tính round success** (giống `calibrate.summarize_attempts`):
+  gộp round fail vào median có thể gắn `success=true` với thời gian của lần model bỏ cuộc.
+- **1 round không đủ kết luận nhanh/chậm**: ngưỡng là `max(2s, 15%)` và ≥3 round mỗi bên;
+  1.19s trong case study là **within noise**, đừng đổi thành "faster".
+- **`measured` trong report upload là input không tin cậy**: `attempts` phải sanitize
+  (`int(dict)` ném TypeError làm reject cả report), và `model` phải `esc()` khi render
+  `/compare` (từng render thẳng thành thẻ HTML).
 
 ## 9. Việc đang mở (ưu tiên từ trên xuống)
 
-1. **Re-fit `k`**: hai thay đổi cùng lúc — metadata .NET (HeapSizes) và success phải
-   grounded — làm `model_seconds` và tỉ lệ success khác run 3. Chạy lại
-   `calibrate.py --ai --repeat 5` trước khi tin `k=0.2758`. Xem `docs/CALIBRATION.md` §8.
-2. **Calibrate thêm**: corpus hiện 8/10 là thư viện .NET NuGet; thêm 5–6 shareware
-   native thật (Total Commander, Beyond Compare, EmEditor…) dạng portable/zip.
-   Giờ pack đã có disassembly nên model frontier mới đo được trên native.
+1. **Re-fit `k`**: đã fit cho default `gpt-6-luna` (OpenCode Go) — **k=1.2673**,
+   n=7, spread 2.27x, corpus 7 DLL licensing NuGet + System.Core/Security + WinRAR
+   (2026-11-16). DeepSeek V4.1 Flash chưa fit được vì 1200 token bị reasoning ăn hết;
+   nếu đổi sang DeepSeek phải đặt `TRAPKEY_AI_MAX_TOKENS=4000` rồi chạy lại
+   `calibrate.py --ai --repeat 3`, xem `docs/CALIBRATION.md` §8.
+2. **Calibrate thêm**: corpus run 4 có 8/11 là .NET (7 DLL licensing NuGet + System.Core/Security);
+   chỉ WinRAR/notepad native, và cả hai trả `none`. Cần thêm 5–6 shareware native thật
+   (Total Commander, Beyond Compare, EmEditor…) dạng portable/zip để fit `k` cho native.
 3. **Protect v2 còn lại**: runtime reference (stub giải mã code gọi tới) và payload feed
    server (endpoint + rotate + revoke). Phần strip/encrypt/decoy/chữ ký đã xong.
-4. **Triển khai**: VPS + systemd + nginx + certbot. Files đã có ở `deploy/`; `git init`
-   và commit cần user xác nhận.
+   Case study `docs/CASE_STUDY_2026-11-16_compare_ai.md`: data-only làm static +12.8s
+   nhưng measured **-1.19s**, agent vẫn tìm ra check → runtime reference là bắt buộc.
+4. **Triển khai**: VPS + systemd + nginx + certbot. Files đã có ở `deploy/`; commit
+   cần user xác nhận.
 5. **Stripe/Resend**: điền env, test webhook idempotency thật.
 6. **SDK C++**: build trên Windows, sửa warning, thêm CI `windows-latest`.
 

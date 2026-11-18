@@ -6,10 +6,10 @@ seconds until it identifies the licence check.
 
 Providers (all optional — the static model works without any of them):
 
-    TRAPKEY_AI_PROVIDER=openai|ollama|anthropic      (default: openai-compatible)
+    TRAPKEY_AI_PROVIDER=openai|ollama|anthropic|gemini      (default: openai-compatible)
 
     OpenAI-compatible (OpenAI, DeepSeek, Groq, Together, OpenRouter, vLLM,
-    LM Studio, llama.cpp server, Ollama, ...):
+    LM Studio, llama.cpp server, Ollama, OpenCode Go, ...):
         OPENAI_BASE_URL   e.g. https://api.deepseek.com/v1
         OPENAI_API_KEY    optional for local endpoints
         TRAPKEY_AI_MODEL
@@ -17,6 +17,14 @@ Providers (all optional — the static model works without any of them):
     Anthropic:
         ANTHROPIC_API_KEY
         TRAPKEY_AI_MODEL  (default claude-3-5-haiku-latest)
+
+    Google Gemini (AI Studio key):
+        TRAPKEY_AI_PROVIDER=gemini
+        GEMINI_API_KEY    (or GOOGLE_API_KEY)
+        TRAPKEY_AI_MODEL  (default gemini-3.1-flash-lite; 3.6-flash mạnh hơn nhưng free tier ~20 req/ngày)
+        TRAPKEY_AI_THINKING_BUDGET  (default 0; empty = let the model decide)
+        TRAPKEY_AI_TIMEOUT  (socket timeout seconds; 3.8-flash needs ~300)
+        GEMINI_BASE_URL   (default https://generativelanguage.googleapis.com/v1beta)
 
     Ollama (local, free):
         TRAPKEY_AI_PROVIDER=ollama
@@ -53,6 +61,12 @@ LOCAL_HOSTS = ("127.0.0.1", "localhost", "host.docker.internal", "0.0.0.0")
 
 MAX_TOKENS_DEFAULT = 1200
 
+GEMINI_BASE_DEFAULT = "https://generativelanguage.googleapis.com/v1beta"
+# The free tier gives gemini-3.6-flash only ~20 requests/day; Flash-Lite has a
+# much larger budget and still answers in ~2s on the evidence pack. Set
+# TRAPKEY_AI_MODEL=gemini-3.6-flash when a billing-enabled key is available.
+GEMINI_MODEL_DEFAULT = "gemini-3.1-flash-lite"
+
 # Disassembly is the difference between "here are strings" and "here is the
 # check". It costs an objdump pass, so it can be switched off for batch runs
 # that only need the string-based measurement.
@@ -84,10 +98,12 @@ def resolve_config() -> dict:
     provider = (os.environ.get("TRAPKEY_AI_PROVIDER") or "").lower()
     base = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
     ollama_key = os.environ.get("OLLAMA_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
     key = (
         os.environ.get("OPENAI_API_KEY")
         or os.environ.get("LLM_API_KEY")
         or os.environ.get("ANTHROPIC_API_KEY")
+        or gemini_key
         or ollama_key
         or ""
     )
@@ -96,6 +112,8 @@ def resolve_config() -> dict:
     if not provider:
         if os.environ.get("ANTHROPIC_API_KEY") and not base and not ollama_key:
             provider = "anthropic"
+        elif gemini_key and not base and not ollama_key:
+            provider = "gemini"
         elif ollama_key and not base:
             provider = "ollama"
         else:
@@ -118,6 +136,19 @@ def resolve_config() -> dict:
         base = base or "https://api.anthropic.com"
         model = model or "claude-3-5-haiku-latest"
         style = "anthropic"
+    elif provider in ("gemini", "google", "google-gemini"):
+        if not gemini_key:
+            raise AIConfigError(
+                "Gemini cần GEMINI_API_KEY (hoặc GOOGLE_API_KEY); "
+                "tạo key ở https://aistudio.google.com/apikey"
+            )
+        # Do not fall back to an OpenAI/Anthropic key: the header is different
+        # and the provider would answer 400, which looks like a code bug.
+        key = gemini_key
+        base = (os.environ.get("GEMINI_BASE_URL", "").rstrip("/")
+                or GEMINI_BASE_DEFAULT)
+        model = (model or GEMINI_MODEL_DEFAULT).removeprefix("models/")
+        style = "gemini"
     elif provider in ("openai", "compatible", "openai-compatible", "deepseek", "groq", "openrouter"):
         base = base or "https://api.openai.com/v1"
         model = model or "gpt-4o-mini"
@@ -128,8 +159,9 @@ def resolve_config() -> dict:
     local = any(host in base for host in LOCAL_HOSTS)
     if not key and not local:
         raise AIConfigError(
-            "chưa cấu hình model: đặt OPENAI_API_KEY (hoặc ANTHROPIC_API_KEY), "
-            "hay dùng Ollama local với TRAPKEY_AI_PROVIDER=ollama"
+            "chưa cấu hình model: đặt OPENAI_API_KEY, GEMINI_API_KEY "
+            "(hoặc ANTHROPIC_API_KEY), hay dùng Ollama local với "
+            "TRAPKEY_AI_PROVIDER=ollama"
         )
 
     return {
@@ -207,8 +239,43 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
         return json.loads(res.read())
 
 
+def _post_sse(url, body, headers, timeout):
+    """Read a Gemini SSE stream and return the final text + usage.
+
+    gemini-3.8-flash ignores thinkingBudget=0; non-streaming generateContent
+    never returned (150s), while SSE produced the answer in ~47s.
+    """
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
+    text_parts = []
+    usage = {}
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        for raw in res:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if not payload:
+                continue
+            try:
+                chunk = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            for candidate in chunk.get("candidates") or []:
+                content = candidate.get("content") or {}
+                for part in content.get("parts") or []:
+                    if part.get("text") and not part.get("thought"):
+                        text_parts.append(part["text"])
+            if chunk.get("usageMetadata"):
+                usage = chunk["usageMetadata"]
+    return "".join(text_parts), usage
+
+
 def _call_openai(cfg: dict, pack: str, timeout: int) -> tuple[str, dict]:
-    headers = {"content-type": "application/json"}
+    headers = {"content-type": "application/json", "user-agent": "trapkey/1.0"}
+    # OpenCode Go gates on client identity/session: a default Python-urllib UA
+    # gets Cloudflare 403/1010 even with a valid key. One scan = one session.
+    if "opencode.ai/inference/go" in cfg["base"]:
+        headers["x-opencode-session"] = os.urandom(16).hex()
     if not cfg["local"] or cfg["key"] != "local":
         headers["authorization"] = f"Bearer {cfg['key']}"
     body = {
@@ -246,6 +313,53 @@ def _call_anthropic(cfg: dict, pack: str, timeout: int) -> tuple[str, dict]:
     data = _post(f"{cfg['base']}/v1/messages", body, headers, timeout)
     text = "".join(block.get("text", "") for block in data.get("content", []))
     return text, data.get("usage") or {}
+
+
+def gemini_thinking_budget() -> int | None:
+    """Gemini 3.x thinks by default, which can take longer than the scan timeout.
+
+    A measurement of "how fast can an agent find the check" must not spend
+    minutes in hidden reasoning. Default 0; an empty/`off` value lets the model
+    use its own default (needed by models that reject the field).
+    """
+    raw = os.environ.get("TRAPKEY_AI_THINKING_BUDGET", "0")
+    if raw is None or str(raw).strip().lower() in ("", "off", "none", "default"):
+        return None
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
+def _call_gemini(cfg: dict, pack: str, timeout: int) -> tuple[str, dict]:
+    headers = {
+        "content-type": "application/json",
+        # Header, not `?key=`: query strings end up in proxy/access logs.
+        "x-goog-api-key": cfg["key"],
+    }
+    generation = {"temperature": 0, "maxOutputTokens": token_budget()}
+    budget = gemini_thinking_budget()
+    if budget is not None:
+        generation["thinkingConfig"] = {"thinkingBudget": budget}
+    body = {
+        "systemInstruction": {
+            "parts": [{"text": "You are a precise reverse engineering assistant."}]
+        },
+        "contents": [{"role": "user", "parts": [{"text": PROMPT + pack}]}],
+        "generationConfig": generation,
+    }
+    text, meta = _post_sse(
+        f"{cfg['base']}/models/{cfg['model']}:streamGenerateContent?alt=sse",
+        body,
+        headers,
+        timeout,
+    )
+    usage = {
+        "prompt_tokens": meta.get("promptTokenCount", 0),
+        "completion_tokens": meta.get("candidatesTokenCount", 0),
+        "total_tokens": meta.get("totalTokenCount", 0),
+    }
+    return text, usage
 
 
 def grounded_answer(raw_value: str, pack: str, image_base: int, size: int) -> bool:
@@ -289,8 +403,14 @@ def classify_failure(status: int | None, detail: str) -> tuple[str, int | None]:
     binary for an exhausted AI quota.
     """
     text = (detail or "").lower()
-    if status == 429 or "usage limit" in text or "quota" in text or "rate limit" in text:
+    if status == 429 or "usage limit" in text or "quota" in text or "rate limit" in text \
+            or "resource_exhausted" in text:
         return "AI_QUOTA", _retry_after(detail)
+    # Google returns 400 (not 401) for an invalid/expired AI Studio key, so the
+    # status alone would label it a network error.
+    if "api key not valid" in text or "api_key_invalid" in text or "invalid api key" in text \
+            or "api key expired" in text:
+        return "AI_AUTH", None
     if status in (401, 403) or "authentication" in text or "unauthorized" in text or "oauth" in text:
         return "AI_AUTH", None
     if status in (404, 410) or "end of life" in text or "not found" in text or "no longer available" in text:
@@ -306,11 +426,25 @@ def measure(ev: Evidence, timeout: int = 120) -> dict:
     except AIConfigError as err:
         return {"error": str(err), "error_code": "AI_CONFIG"}
 
+    # Thinking models (gemini-3.8-flash) can pause longer than the default
+    # socket timeout before the first SSE event; let operators raise it.
+    raw_timeout = os.environ.get("TRAPKEY_AI_TIMEOUT", "")
+    if raw_timeout:
+        try:
+            timeout = max(5, int(raw_timeout))
+        except ValueError:
+            pass
+
     meta: dict = {}
     pack = build_pack(ev, meta=meta)
     started = time.time()
     try:
-        caller = _call_anthropic if cfg["style"] == "anthropic" else _call_openai
+        if cfg["style"] == "anthropic":
+            caller = _call_anthropic
+        elif cfg["style"] == "gemini":
+            caller = _call_gemini
+        else:
+            caller = _call_openai
         text, usage = caller(cfg, pack, timeout)
     except urllib.error.HTTPError as err:
         raw = ""

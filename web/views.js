@@ -557,6 +557,7 @@ function comparePage({ result = null, error = null, originalText = '', protected
           <tr><td>Crack</td><td>~${duration(result.original.crack_seconds_best)} .. ~${duration(result.original.crack_seconds_worst)}</td></tr>
           <tr><td>P(success)</td><td>${result.original.p_success}</td></tr>
           <tr><td>Risk</td><td>${result.original.risk}/100</td></tr>
+          ${result.original.measured ? `<tr><td>Đo thật</td><td>${duration(result.original.measured.seconds)} · ${result.original.measured.success ? 'found' : 'none'}</td></tr>` : ''}
         </table>
       </div>
       <div>
@@ -566,6 +567,7 @@ function comparePage({ result = null, error = null, originalText = '', protected
           <tr><td>Crack</td><td>~${duration(result.protected.crack_seconds_best)} .. ~${duration(result.protected.crack_seconds_worst)}</td></tr>
           <tr><td>P(success)</td><td>${result.protected.p_success}</td></tr>
           <tr><td>Risk</td><td>${result.protected.risk}/100</td></tr>
+          ${result.protected.measured ? `<tr><td>Đo thật</td><td>${duration(result.protected.measured.seconds)} · ${result.protected.measured.success ? 'found' : 'none'}</td></tr>` : ''}
         </table>
       </div>
     </div>
@@ -573,6 +575,8 @@ function comparePage({ result = null, error = null, originalText = '', protected
       <tr><td>Δ crack (best)</td><td>${result.delta.seconds_best >= 0 ? '+' : ''}${result.delta.seconds_best}s</td></tr>
       <tr><td>Δ p_success</td><td>${result.delta.p_success >= 0 ? '+' : ''}${result.delta.p_success}</td></tr>
       <tr><td>Δ risk</td><td>${result.delta.risk >= 0 ? '+' : ''}${result.delta.risk}</td></tr>
+      ${result.ai ? `<tr><td>Δ AI measured</td><td>${result.ai.delta_seconds >= 0 ? '+' : ''}${result.ai.delta_seconds}s · ${esc(result.ai.model || '')}</td></tr>` : ''}
+      ${result.ai ? `<tr><td>AI verdict</td><td>${esc(result.ai.verdict)}</td></tr>` : ''}
     </table>
     <h3>Leak đã vá</h3>
     ${result.fixed_findings.length ? `<ul class="findings">${findingRows(result.fixed_findings, 'fixed')}</ul>` : '<p class="muted">Không có leak nào biến mất.</p>'}

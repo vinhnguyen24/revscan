@@ -1,0 +1,498 @@
+{
+  "provider": "openai:gpt-6-luna",
+  "model_key": "cloud-fast",
+  "fit": {
+    "k": 1.2673,
+    "median": 1.1376,
+    "n": 7,
+    "min": 0.9793,
+    "max": 2.2243,
+    "spread": 2.27
+  },
+  "rows": [
+    {
+      "file": "/tmp/opencode/calib-corpus/IntelliLock.Licensing.dll",
+      "name": "IntelliLock.Licensing.dll",
+      "kind": "dotnet",
+      "size": 24576,
+      "model_key": "cloud-fast",
+      "model_seconds": 26.3,
+      "workload_seconds": 3.228,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 4,
+      "measured": 7.18,
+      "success": true,
+      "successes": 2,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 2329,
+        "completion_tokens": 279,
+        "total_tokens": 2608,
+        "prompt_tokens_details": {
+          "cached_tokens": 2326
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 226
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00016306,
+          "allowance": 0.00065224,
+          "tokens": {
+            "input": 3,
+            "output": 279,
+            "reasoning": 226,
+            "cache_read": 2326,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 852
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/ThinkSharp.Licensing.dll",
+      "name": "ThinkSharp.Licensing.dll",
+      "kind": "dotnet",
+      "size": 26112,
+      "model_key": "cloud-fast",
+      "model_seconds": 26.4,
+      "workload_seconds": 2.701,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 4,
+      "measured": 3.51,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 4853,
+        "completion_tokens": 199,
+        "total_tokens": 5052,
+        "prompt_tokens_details": {
+          "cached_tokens": 4850
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 117
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.0001483,
+          "allowance": 0.0005932,
+          "tokens": {
+            "input": 3,
+            "output": 199,
+            "reasoning": 117,
+            "cache_read": 4850,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 2728
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/Cryptlex.LexActivator.dll",
+      "name": "Cryptlex.LexActivator.dll",
+      "kind": "dotnet",
+      "size": 60712,
+      "model_key": "cloud-fast",
+      "model_seconds": 26.7,
+      "workload_seconds": 4.753,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 5,
+      "measured": 7.91,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 12174,
+        "completion_tokens": 307,
+        "total_tokens": 12481,
+        "prompt_tokens_details": {
+          "cached_tokens": 12171
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 228
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00027551,
+          "allowance": 0.00110204,
+          "tokens": {
+            "input": 3,
+            "output": 307,
+            "reasoning": 228,
+            "cache_read": 12171,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 8779
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/Licensing.Net.dll",
+      "name": "Licensing.Net.dll",
+      "kind": "dotnet",
+      "size": 86528,
+      "model_key": "cloud-fast",
+      "model_seconds": 26.6,
+      "workload_seconds": 10.223,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 5,
+      "measured": 11.63,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 10961,
+        "completion_tokens": 841,
+        "total_tokens": 11802,
+        "prompt_tokens_details": {
+          "cached_tokens": 10958
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 755
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00053038,
+          "allowance": 0.00212152,
+          "tokens": {
+            "input": 3,
+            "output": 841,
+            "reasoning": 755,
+            "cache_read": 10958,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 10949
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/notepad.exe",
+      "name": "notepad.exe",
+      "kind": "native",
+      "size": 200704,
+      "model_key": "cloud-fast",
+      "model_seconds": 72.4,
+      "workload_seconds": 2.444,
+      "tool_seconds": 22.0,
+      "p_success": 0.35,
+      "markers": [],
+      "findings": 0,
+      "measured": 2.84,
+      "success": false,
+      "successes": 0,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 12982,
+        "completion_tokens": 78,
+        "total_tokens": 13060,
+        "prompt_tokens_details": {
+          "cached_tokens": 12979
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 69
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00016909,
+          "allowance": 0.00067636,
+          "tokens": {
+            "input": 3,
+            "output": 78,
+            "reasoning": 69,
+            "cache_read": 12979,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 226
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/System.Security.dll",
+      "name": "System.Security.dll",
+      "kind": "dotnet",
+      "size": 322408,
+      "model_key": "cloud-fast",
+      "model_seconds": 27.8,
+      "workload_seconds": 4.8,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 5,
+      "measured": 4.58,
+      "success": false,
+      "successes": 0,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 19371,
+        "completion_tokens": 226,
+        "total_tokens": 19597,
+        "prompt_tokens_details": {
+          "cached_tokens": 19368
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 217
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00030698,
+          "allowance": 0.00122792,
+          "tokens": {
+            "input": 3,
+            "output": 226,
+            "reasoning": 217,
+            "cache_read": 19368,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 5855
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/Syncfusion.Licensing.dll",
+      "name": "Syncfusion.Licensing.dll",
+      "kind": "dotnet",
+      "size": 444928,
+      "model_key": "cloud-fast",
+      "model_seconds": 26.8,
+      "workload_seconds": 4.145,
+      "tool_seconds": 2.0,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 4,
+      "measured": 5.09,
+      "success": false,
+      "successes": 0,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 13121,
+        "completion_tokens": 238,
+        "total_tokens": 13359,
+        "prompt_tokens_details": {
+          "cached_tokens": 13118
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 157
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00025048,
+          "allowance": 0.00100192,
+          "tokens": {
+            "input": 3,
+            "output": 238,
+            "reasoning": 157,
+            "cache_read": 13118,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 8781
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/System.Evaluation.dll",
+      "name": "System.Evaluation.dll",
+      "kind": "dotnet",
+      "size": 749568,
+      "model_key": "cloud-fast",
+      "model_seconds": 110.7,
+      "workload_seconds": 5.043,
+      "tool_seconds": 62.0,
+      "p_success": 0.62,
+      "markers": [],
+      "findings": 5,
+      "measured": 4.94,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 21142,
+        "completion_tokens": 228,
+        "total_tokens": 21370,
+        "prompt_tokens_details": {
+          "cached_tokens": 21139
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 149
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00032569,
+          "allowance": 0.00130276,
+          "tokens": {
+            "input": 3,
+            "output": 228,
+            "reasoning": 149,
+            "cache_read": 21139,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 4840
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/Portable.Licensing.dll",
+      "name": "Portable.Licensing.dll",
+      "kind": "dotnet",
+      "size": 1442816,
+      "model_key": "cloud-fast",
+      "model_seconds": 28.7,
+      "workload_seconds": 6.321,
+      "tool_seconds": 2.113059071549643,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 7,
+      "measured": 6.19,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 20841,
+        "completion_tokens": 353,
+        "total_tokens": 21194,
+        "prompt_tokens_details": {
+          "cached_tokens": 20838
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 278
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00038518,
+          "allowance": 0.00154072,
+          "tokens": {
+            "input": 3,
+            "output": 353,
+            "reasoning": 278,
+            "cache_read": 20838,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 4853
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/System.Core.dll",
+      "name": "System.Core.dll",
+      "kind": "dotnet",
+      "size": 1551312,
+      "model_key": "cloud-fast",
+      "model_seconds": 28.7,
+      "workload_seconds": 5.831,
+      "tool_seconds": 2.1361653608629907,
+      "p_success": 0.97,
+      "markers": [],
+      "findings": 4,
+      "measured": 5.83,
+      "success": true,
+      "successes": 3,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 19704,
+        "completion_tokens": 320,
+        "total_tokens": 20024,
+        "prompt_tokens_details": {
+          "cached_tokens": 19701
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 202
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00035731,
+          "allowance": 0.00142924,
+          "tokens": {
+            "input": 3,
+            "output": 320,
+            "reasoning": 202,
+            "cache_read": 19701,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 4154
+    },
+    {
+      "file": "/tmp/opencode/calib-corpus/WinRAR.exe",
+      "name": "WinRAR.exe",
+      "kind": "native",
+      "size": 2461336,
+      "model_key": "cloud-fast",
+      "model_seconds": 70.3,
+      "workload_seconds": 3.629,
+      "tool_seconds": 27.555951187792196,
+      "p_success": 0.85,
+      "markers": [],
+      "findings": 3,
+      "measured": 3.35,
+      "success": false,
+      "successes": 0,
+      "attempts": 3,
+      "model_used": "gpt-6-luna",
+      "usage": {
+        "prompt_tokens": 21538,
+        "completion_tokens": 89,
+        "total_tokens": 21627,
+        "prompt_tokens_details": {
+          "cached_tokens": 21535
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 80
+        },
+        "cost": 0,
+        "opencode": {
+          "billing_source": "go",
+          "list_cost": 0.00026015,
+          "allowance": 0.0010406,
+          "tokens": {
+            "input": 3,
+            "output": 89,
+            "reasoning": 80,
+            "cache_read": 21535,
+            "cache_write_5m": 0,
+            "cache_write_1h": 0
+          }
+        }
+      },
+      "code_chars": 4468
+    }
+  ]
+}

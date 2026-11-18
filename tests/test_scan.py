@@ -19,7 +19,10 @@ sys.path.insert(0, str(ROOT))
 from scanner import collect, estimate, risk_score, scan  # noqa: E402
 from scanner.ai import (  # noqa: E402
     AIConfigError,
+    _call_gemini,
+    _call_openai,
     classify_failure,
+    gemini_thinking_budget,
     grounded_answer,
     resolve_config,
 )
@@ -232,9 +235,13 @@ class AIConfigTests(unittest.TestCase):
         "LLM_API_KEY",
         "ANTHROPIC_API_KEY",
         "OLLAMA_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_BASE_URL",
         "OPENAI_BASE_URL",
         "TRAPKEY_AI_PROVIDER",
         "TRAPKEY_AI_MODEL",
+        "TRAPKEY_AI_THINKING_BUDGET",
     )
 
     def setUp(self):
@@ -290,9 +297,128 @@ class AIConfigTests(unittest.TestCase):
         self.assertEqual(cfg["style"], "anthropic")
         self.assertEqual(cfg["base"], "https://api.anthropic.com")
 
+    def test_gemini_key_autodetects_google(self):
+        os.environ["GEMINI_API_KEY"] = "AIza-x"
+        cfg = resolve_config()
+        self.assertEqual(cfg["provider"], "gemini")
+        self.assertEqual(cfg["style"], "gemini")
+        self.assertEqual(cfg["base"], "https://generativelanguage.googleapis.com/v1beta")
+        self.assertEqual(cfg["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(cfg["key"], "AIza-x")
+
+    def test_gemini_google_alias_and_model_prefix(self):
+        os.environ["GOOGLE_API_KEY"] = "AIza-y"
+        os.environ["TRAPKEY_AI_MODEL"] = "models/gemini-3.5-flash"
+        cfg = resolve_config()
+        self.assertEqual(cfg["provider"], "gemini")
+        self.assertEqual(cfg["model"], "gemini-3.5-flash")
+
+    def test_gemini_custom_base(self):
+        os.environ["TRAPKEY_AI_PROVIDER"] = "gemini"
+        os.environ["GEMINI_API_KEY"] = "AIza-x"
+        os.environ["GEMINI_BASE_URL"] = "https://example.test/v1beta/"
+        cfg = resolve_config()
+        self.assertEqual(cfg["base"], "https://example.test/v1beta")
+
+    def test_gemini_never_reuses_an_openai_key(self):
+        os.environ["TRAPKEY_AI_PROVIDER"] = "gemini"
+        os.environ["OPENAI_API_KEY"] = "sk-x"
+        with self.assertRaises(AIConfigError):
+            resolve_config()
+
+    def test_opencode_go_sends_identity_headers(self):
+        import scanner.ai as ai_module
+
+        captured = {}
+
+        def fake_post(url, body, headers, timeout):
+            captured.update(headers=headers)
+            return {"choices": [{"message": {"content": "FUNCTION: none"}}], "usage": {}}
+
+        saved = ai_module._post
+        ai_module._post = fake_post
+        try:
+            cfg = {
+                "base": "https://opencode.ai/inference/go/openai/v1",
+                "key": "k",
+                "model": "deepseek-v4.1-flash",
+                "local": False,
+            }
+            _call_openai(cfg, "PACK", 9)
+        finally:
+            ai_module._post = saved
+        # Go returns Cloudflare 403/1010 for the default Python-urllib UA.
+        self.assertEqual(captured["headers"]["user-agent"], "trapkey/1.0")
+        self.assertIn("x-opencode-session", captured["headers"])
+
     def test_unconfigured_is_an_error(self):
         with self.assertRaises(AIConfigError):
             resolve_config()
+
+
+class GeminiCallTests(unittest.TestCase):
+    def _cfg(self):
+        return {
+            "provider": "gemini",
+            "style": "gemini",
+            "base": "https://generativelanguage.googleapis.com/v1beta",
+            "key": "AIza-test",
+            "model": "gemini-3.6-flash",
+            "local": False,
+        }
+
+    def test_request_and_response_are_mapped_to_the_common_shape(self):
+        import scanner.ai as ai_module
+
+        captured = {}
+
+        def fake_sse(url, body, headers, timeout):
+            captured.update(url=url, body=body, headers=headers, timeout=timeout)
+            return "FUNCTION: IsKeyValid done", {
+                "promptTokenCount": 120,
+                "candidatesTokenCount": 7,
+                "totalTokenCount": 127,
+            }
+
+        saved = ai_module._post_sse
+        ai_module._post_sse = fake_sse
+        try:
+            text, usage = _call_gemini(self._cfg(), "PACK", 9)
+        finally:
+            ai_module._post_sse = saved
+
+        self.assertTrue(captured["url"].endswith(":streamGenerateContent?alt=sse"))
+        self.assertEqual(captured["headers"]["x-goog-api-key"], "AIza-test")
+        self.assertEqual(captured["body"]["generationConfig"]["thinkingConfig"], {"thinkingBudget": 0})
+        self.assertEqual(text, "FUNCTION: IsKeyValid done")
+        self.assertEqual(usage["prompt_tokens"], 120)
+        self.assertEqual(usage["completion_tokens"], 7)
+
+    def test_thinking_can_be_left_to_the_model(self):
+        import scanner.ai as ai_module
+
+        saved_env = os.environ.get("TRAPKEY_AI_THINKING_BUDGET")
+        captured = {}
+        os.environ["TRAPKEY_AI_THINKING_BUDGET"] = "off"
+        try:
+            def fake_sse(url, body, headers, timeout):
+                captured.update(body=body)
+                return "OK", {}
+
+            saved = ai_module._post_sse
+            ai_module._post_sse = fake_sse
+            try:
+                _call_gemini(self._cfg(), "PACK", 9)
+            finally:
+                ai_module._post_sse = saved
+            self.assertIsNone(gemini_thinking_budget())
+        finally:
+            if saved_env is None:
+                os.environ.pop("TRAPKEY_AI_THINKING_BUDGET", None)
+            else:
+                os.environ["TRAPKEY_AI_THINKING_BUDGET"] = saved_env
+
+        self.assertNotIn("thinkingConfig", captured["body"]["generationConfig"])
 
 
 class AIFailureTests(unittest.TestCase):
@@ -305,6 +431,11 @@ class AIFailureTests(unittest.TestCase):
         self.assertEqual(code, "AI_QUOTA")
         self.assertEqual(retry, 299)
         self.assertEqual(classify_failure(401, "OAuth access token has expired")[0], "AI_AUTH")
+        self.assertEqual(
+            classify_failure(400, '{"error":{"message":"API key not valid. Please pass a valid API key."}}')[0],
+            "AI_AUTH",
+        )
+        self.assertEqual(classify_failure(429, "RESOURCE_EXHAUSTED: quota exceeded")[0], "AI_QUOTA")
         self.assertEqual(classify_failure(410, "model has reached its end of life")[0], "AI_MODEL")
         self.assertEqual(classify_failure(500, "upstream broke")[0], "AI_PROVIDER")
         self.assertEqual(classify_failure(None, "connection reset")[0], "AI_NETWORK")

@@ -37,6 +37,8 @@ OpenAI-compatible nên cắm được gần như mọi model:
 |---|---|---|
 | **Ollama local** | `TRAPKEY_AI_PROVIDER=ollama` `TRAPKEY_AI_MODEL=qwen2.5-coder:7b` | 0đ (chậm) |
 | **Ollama Cloud** | `OLLAMA_API_KEY` `TRAPKEY_AI_MODEL=gpt-oss:120b` | theo plan, không cần GPU |
+| **OpenCode Go** | `TRAPKEY_AI_PROVIDER=openai` `OPENAI_BASE_URL=https://opencode.ai/inference/go/openai/v1` `OPENAI_API_KEY=<Go key>` `TRAPKEY_AI_MODEL=gpt-6-luna` | $10/tháng (Go) |
+| **Google Gemini** | `TRAPKEY_AI_PROVIDER=gemini` `GEMINI_API_KEY` `TRAPKEY_AI_MODEL=gemini-3.1-flash-lite` (hoặc `gemini-3.6-flash`/`3.8-flash`) | free tier / rẻ |
 | OpenAI | `OPENAI_API_KEY` `TRAPKEY_AI_MODEL=gpt-4o-mini` | ~$0.01/scan |
 | **DeepSeek / Groq / Together / OpenRouter / vLLM / LM Studio** | `OPENAI_BASE_URL=https://api.deepseek.com/v1` + `OPENAI_API_KEY` | rẻ hơn OpenAI |
 | Anthropic | `ANTHROPIC_API_KEY` | ~$0.01/scan |
@@ -48,6 +50,16 @@ TRAPKEY_AI_PROVIDER=ollama TRAPKEY_AI_MODEL=qwen2.5-coder:7b python3 scan.py App
 # Ollama Cloud: chỉ cần key, base https://ollama.com/v1 được set tự động
 OLLAMA_API_KEY=... TRAPKEY_AI_MODEL=gpt-oss:120b python3 scan.py App.exe --ai
 
+# Google Gemini (AI Studio key). thinkingBudget=0 để đo tốc độ thật.
+TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=... TRAPKEY_AI_MODEL=gemini-3.1-flash-lite \
+  python3 scan.py App.exe --ai
+# 3.8-flash: cần streaming + timeout ~300s; đo thử notepad mất 276s -> không hợp demo.
+TRAPKEY_AI_MODEL=gemini-3.8-flash TRAPKEY_AI_TIMEOUT=300 python3 scan.py App.exe --ai
+
+# OpenCode Go: OpenAI-compatible; default rẻ gpt-6-luna, mạnh hơn deepseek-v4.1-flash
+OPENAI_BASE_URL=https://opencode.ai/inference/go/openai/v1 OPENAI_API_KEY=... \
+  TRAPKEY_AI_MODEL=gpt-6-luna python3 scan.py App.exe --ai
+
 # rẻ, nhanh
 OPENAI_BASE_URL=https://api.deepseek.com/v1 OPENAI_API_KEY=sk-... \
   TRAPKEY_AI_MODEL=deepseek-chat python3 scan.py App.exe --ai
@@ -55,6 +67,9 @@ OPENAI_BASE_URL=https://api.deepseek.com/v1 OPENAI_API_KEY=sk-... \
 
 Web tự ẩn nút "AI-measured" khi chưa cấu hình model, và trả `503 AI_UNAVAILABLE`
 kèm hướng dẫn thay vì lỗi mơ hồ.
+
+> **Gemini free tier dùng nội dung để cải thiện sản phẩm.** Với code/strings của khách,
+> bật billing (paid tier) trước khi dùng `--ai`; paid tier không dùng dữ liệu để train.
 
 ### `--ai` gửi gì cho model?
 
@@ -110,12 +125,12 @@ Mọi thay đổi ghi vào bảng `ledger`.
 | Thành phần | Trạng thái | Mô tả |
 |---|---|---|
 | **`scanner/` + `scan.py`** | ✅ chạy được, có test | Đọc PE/.NET metadata thật, đếm hàm/method, tính thời gian crack theo cost model minh bạch |
-| **`web/`** | ✅ chạy được, 40 test | SaaS: landing, upload scan, **/compare trước–sau từ 2 report JSON**, magic-link auth, credit, dashboard, admin, invoice/Stripe, retention, AI cooldown |
+| **`web/`** | ✅ chạy được, 45 test | SaaS: landing, upload scan, **/compare trước–sau từ 2 report JSON**, magic-link auth, credit, dashboard, admin, invoice/Stripe, retention, AI cooldown |
 | `cli/trapkey.py protect` | ✅ chạy được (15 test) | Strip PDB + payload v2 mã hoá theo build, decoy chunk, chữ ký bundle tuỳ chọn |
-| `cli/trapkey.py compare` | ✅ chạy được (19 test) | Scan gốc vs bản protect: delta giây/p/risk + finding thay đổi |
+| `cli/trapkey.py compare` | ✅ chạy được (29 test) | Scan gốc vs bản protect: delta giây/p/risk + finding thay đổi; `--ai` đo thật cả 2 bản |
 | `benchmark.py` | ✅ chạy được (46 test) | Ground-truth harness: chấm static/`--ai` bằng nhãn, không dùng success tự báo |
 | `cli/trapkey.py verify` | ✅ chạy được | Verify token RSA offline |
-| `server/` | ✅ chạy được (19 test) | License server + admin UI — **không phải sản phẩm chính**, xem ghi chú bên dưới |
+| `server/` | ✅ chạy được (16 test) | License server + admin UI — **không phải sản phẩm chính**, xem ghi chú bên dưới |
 | `sdk/cpp`, `sdk/dotnet` | ⚠️ chưa compile | SDK licensing, Windows-only |
 | `demo/demo.py` | ✅ | Demo luồng license end-to-end |
 
@@ -155,7 +170,7 @@ Công thức + hằng số + cách calibrate: [`docs/CALIBRATION.md`](docs/CALIB
 ```bash
 # web
 npm start                          # http://127.0.0.1:7200
-node tests/test_web.js             # 40 test end-to-end
+node tests/test_web.js             # 45 test end-to-end
 
 # scan một file
 python3 scan.py C:/path/App.exe
@@ -168,10 +183,13 @@ python3 scan.py dist/App.exe --min-seconds 60
 
 # đo thật bằng model (tốn token)
 OPENAI_API_KEY=... python3 scan.py App.exe --ai
+TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=... python3 scan.py App.exe --ai
 
 # calibrate hàng loạt: model vs đo thật -> ra một multiplier k
 python3 calibrate.py C:/path/binaries --limit 20
 TRAPKEY_AI_PROVIDER=ollama python3 calibrate.py C:/path/binaries --ai --limit 10
+# Gemini free tier: 5 request/phút -> pace giữa các call
+TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=... python3 calibrate.py C:/path/binaries --ai --repeat 3 --pause 13
 TRAPKEY_CALIBRATION_K=1.7 python3 scan.py App.exe
 
 # protect: strip PDB + chèn payload v2 (mã hoá theo build, có decoy)
@@ -181,6 +199,9 @@ python3 cli/trapkey.py info dist/App.protected.exe    # xem payload/chunk/decoy
 
 # đo lại sau khi protect: trước/sau, delta giây/p/risk, finding nào mất
 python3 cli/trapkey.py compare dist/App.exe dist/App.protected.exe --json
+# đo thật cả 2 bản bằng cùng một model (1 round/bản; --repeat 3 lấy median)
+python3 cli/trapkey.py compare dist/App.exe dist/App.protected.exe --ai --repeat 3 --json
+# kết quả thật: docs/CASE_STUDY_2026-11-16_compare_ai.md
 
 # web /compare: upload 2 report JSON, không upload binary
 python3 scan.py dist/App.exe --json > before.json
@@ -218,17 +239,19 @@ rồi đọc decoy).
 
 | Việc | Kết quả |
 |---|---|
-| 27 test scanner (ident, PE, .NET metadata, chiều của model, provider, AI error codes, report JSON) | ✅ pass |
+| 34 test scanner (ident, PE, .NET metadata, chiều của model, provider, Gemini/Gemini usage, AI error codes, report JSON) | ✅ pass |
 | 18 test calibrate (fit k, tool time không bị scale, per-model k, CLI) | ✅ pass |
-| Calibrate run 3 (`ollama/gpt-oss:120b` qua gateway S3) | k=0.2758, n=10, spread 1.87x (2026-11-14) |
+| Calibrate run 4 (`gpt-6-luna` qua OpenCode Go) | **k=1.2673**, n=7, spread 2.27x (2026-11-16) |
+| Calibrate run 3 (`ollama/gpt-oss:120b` qua gateway S3) | k=0.2758, n=10, spread 1.87x (2026-11-14, cũ) |
 | 15 test protect (payload v2 round-trip, seed theo build, strip PDB, chữ ký bundle, CLI) | ✅ pass |
-| 19 test compare (delta, JSON một object, same file, lỗi input, PE truncate) | ✅ pass |
+| 29 test compare (delta, JSON một object, same file, lỗi input, PE truncate, AI block/median, noise) | ✅ pass |
 | 46 test benchmark (labels, matching, FP/FN, skip, CLI, JSON) | ✅ pass |
+| 14 test disasm (IL decoder, token resolve, objdump xref, metadata align) | ✅ pass |
 | `notepad.exe` (không có license logic) | ~72s, p=0.35 |
 | `notepad.exe` + string license | ~60s, p=0.85 (string giúp agent tìm nhanh hơn) |
 | cùng file, `protect --level 3` (v2) | ~83s, p=0.05 (strip PDB + trap + decoy) |
 | `mscorlib.dll` (27.492 methods) | ~48s, p=0.90 (metadata lộ toàn bộ tên hàm) |
-| 40 test web (login, quota, cache, paywall, admin, CI token, webhook, retention, AI quota/cooldown, 404, AI mode) | ✅ pass |
+| 45 test web (login, quota, cache, paywall, admin, CI token, webhook, retention, AI quota/cooldown, 404, AI mode, xoá tài khoản, escape) | ✅ pass |
 | 16 test license server | ✅ pass |
 | SDK C++ / .NET compile | ⚠️ chưa (không có MSVC ở đây) |
 

@@ -23,6 +23,7 @@ import math
 import os
 import statistics
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -202,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repeat", type=int, default=1,
                     help="measure each file N times and use the median (recommended 3)")
     ap.add_argument("--limit", type=int, default=25)
+    ap.add_argument("--pause", type=float, default=0.0,
+                    help="sleep N seconds between model calls (Gemini free tier: 13)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--out", help="write the full result as JSON")
     a = ap.parse_args(argv)
@@ -228,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     rows: list[dict] = []
+    calls_made = 0
     for file in files:
         try:
             ev = collect(str(file))
@@ -259,7 +263,19 @@ def main(argv: list[str] | None = None) -> int:
         }
 
         if a.ai:
-            results = [measure(ev) for _ in range(max(1, a.repeat))]
+            results = []
+            for _ in range(max(1, a.repeat)):
+                # Free tiers are per-minute; pacing here is cheaper than watching
+                # half the corpus get skipped with 429.
+                if a.pause and calls_made:
+                    time.sleep(a.pause)
+                calls_made += 1
+                result = measure(ev)
+                if result.get("error_code") == "AI_QUOTA" and result.get("retry_after"):
+                    # One polite retry after the provider's own reset window.
+                    time.sleep(min(int(result["retry_after"]), 60))
+                    result = measure(ev)
+                results.append(result)
             summary = summarize_attempts(results)
             if summary.get("error"):
                 print(f"skip {file.name}: {summary['error']}", file=sys.stderr)

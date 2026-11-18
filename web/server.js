@@ -752,12 +752,23 @@ function createServer(options = {}) {
     /^\/api\/account\/delete$/,
     (ctx) => {
       if (!ctx.account) return redirect(ctx.res, '/login');
+      const email = ctx.account.email;
       tx(db, () => {
         db.prepare('DELETE FROM scans WHERE account_id=?').run(ctx.account.id);
         db.prepare('DELETE FROM sessions WHERE account_id=?').run(ctx.account.id);
         db.prepare('DELETE FROM ledger WHERE account_id=?').run(ctx.account.id);
+        // Magic links are keyed by email, not account id, and login events were
+        // written with a null account. Leaving them behind meant "delete my
+        // account" kept the address in two places. Scrub the payloads (events
+        // stay as an anonymous audit trail) and drop the pending links.
+        db.prepare('DELETE FROM magic_links WHERE email=?').run(email);
+        const stale = db.prepare('SELECT id, payload FROM events WHERE payload LIKE ?').all(`%${email}%`);
+        const scrub = db.prepare("UPDATE events SET payload='{}' WHERE id=?");
+        for (const row of stale) {
+          if (String(row.payload).includes(email)) scrub.run(row.id);
+        }
         db.prepare('DELETE FROM accounts WHERE id=?').run(ctx.account.id);
-        event(db, 'account_deleted', null, { email: ctx.account.email });
+        event(db, 'account_deleted', null, {});
       });
       redirect(ctx.res, '/', [auth.clearCookie()]);
     },
@@ -1140,6 +1151,22 @@ function createServer(options = {}) {
           ? fail(res, 413, 'TOO_LARGE', 'file quá lớn')
           : send(res, 413, 'too large');
       }
+      // `readJson` throws this from routes that do not wrap it locally (auth,
+      // checkout, admin grant). Without this mapping a malformed body was a
+      // 500 INTERNAL, which tells the client the server broke instead of its
+      // request.
+      if (err.code === 'BAD_JSON') {
+        return pathname.startsWith('/api/')
+          ? fail(res, 400, 'BAD_JSON', 'body phải là JSON hợp lệ')
+          : send(res, 400, 'bad JSON');
+      }
+      // An empty body or a client that vanished mid-upload is bad input, not
+      // an internal error. The scan route has already refunded the quota.
+      if (err.code === 'EMPTY' || err.code === 'UPLOAD') {
+        return pathname.startsWith('/api/')
+          ? fail(res, 400, err.code, err.message || 'upload không hợp lệ')
+          : send(res, 400, err.message || 'upload không hợp lệ');
+      }
       console.error('[trapkey-web]', err);
       if (res.headersSent) return res.end();
       return pathname.startsWith('/api/') ? fail(res, 500, 'INTERNAL', 'internal error') : html(res, views.errorPage('Lỗi hệ thống.'), 500);
@@ -1150,6 +1177,7 @@ function createServer(options = {}) {
     db,
     config,
     cleanup: (stamp) => runCleanup(stamp),
+    sweepUploads: (maxAgeMs) => sweepOldUploads(maxAgeMs),
     ai: {
       reset: resetAiCooldown,
       coolingDown: aiCoolingDown,
@@ -1168,7 +1196,7 @@ if (require.main === module) {
     console.log('  TrapKey web');
     console.log(`  url   : http://${config.host === '0.0.0.0' ? '127.0.0.1' : config.host}:${config.port}`);
     console.log(`  data  : ${config.dataDir}`);
-    console.log(`  admin : /app/admin  (key: ${config.adminKey})`);
+    console.log(`  admin : /app/admin  (key: ADMIN_KEY or ${path.join(config.dataDir, 'admin.key')})`);
     console.log('');
   });
 }

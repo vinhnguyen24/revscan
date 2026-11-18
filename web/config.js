@@ -54,6 +54,8 @@ function aiAvailable() {
     process.env.OPENAI_API_KEY ||
       process.env.LLM_API_KEY ||
       process.env.ANTHROPIC_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
       process.env.OLLAMA_API_KEY ||
       process.env.OPENAI_BASE_URL ||
       (process.env.TRAPKEY_AI_PROVIDER || '').toLowerCase() === 'ollama'
@@ -102,6 +104,7 @@ module.exports = {
   maxConcurrentScans: Math.max(1, Number(process.env.MAX_CONCURRENT_SCANS || 4)),
 
   engine: path.join(ROOT, 'scan.py'),
+  cli: path.join(ROOT, 'cli', 'trapkey.py'),
   // Windows installs `python.exe`; most Unix images only have `python3`.
   python: process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
 

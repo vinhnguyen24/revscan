@@ -6,7 +6,7 @@
     trapkey verify   <license-token> --pem <public.pem>
     trapkey verify   <license-token> --n <b64url> --e <hex>
     trapkey info     <app.exe>
-    trapkey compare  <original.exe> <protected.exe> [--json]
+    trapkey compare  <original.exe> <protected.exe> [--json] [--ai [--repeat N]]
 
 `protect` never rebuilds and never needs source. It strips debug/PDB data and
 appends a data section that carries AI-deception payloads. Use `scan.py` for the
@@ -35,6 +35,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scanner import collect, estimate, human_duration  # noqa: E402
+from scanner.compare import AIMeasureError  # noqa: E402
 from scanner.compare import compare as compare_files  # noqa: E402
 from scanner.compare import from_reports  # noqa: E402
 from scanner.compare import render as render_compare  # noqa: E402
@@ -350,12 +351,18 @@ def cmd_protect(args: argparse.Namespace) -> int:
 
 def cmd_compare(args: argparse.Namespace) -> int:
     for path in (args.original, args.protected):
-        if not Path(path).is_file():
+        if not Path(path).exists():
             print(f"error: {path} not found", file=sys.stderr)
+            return 2
+        if not Path(path).is_file():
+            print(f"error: {path} is not a file", file=sys.stderr)
             return 2
 
     try:
-        result = compare_files(args.original, args.protected)
+        result = compare_files(args.original, args.protected, measure=args.ai, repeat=args.repeat)
+    except AIMeasureError as err:
+        print(f"error[{err.code}]: {err}", file=sys.stderr)
+        return 3
     except (ScanPEError, OSError, struct.error) as err:
         # struct.error covers a truncated header: still "bad input", not a crash.
         print(f"error: {err}", file=sys.stderr)
@@ -505,6 +512,13 @@ def main(argv: list[str] | None = None) -> int:
     p_compare.add_argument("original")
     p_compare.add_argument("protected")
     p_compare.add_argument("--json", action="store_true", help="machine-readable output")
+    p_compare.add_argument(
+        "--ai", action="store_true", help="also run one live model round on each file"
+    )
+    p_compare.add_argument(
+        "--repeat", type=int, default=1,
+        help="with --ai, run N rounds per file and use the median (3 recommended)",
+    )
     p_compare.set_defaults(func=cmd_compare)
 
     p_reports = sub.add_parser(
