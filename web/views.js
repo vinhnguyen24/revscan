@@ -1,10 +1,21 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
 const config = require('./config');
 const demo = require('./demo');
 const { LANGUAGES, normalizeLang, planFeatures, t } = require('./i18n');
 
 /* ------------------------------- helpers ------------------------------- */
+
+function assetUrl(name) {
+  try {
+    const st = fs.statSync(path.join(__dirname, 'static', name));
+    return `/static/${name}?v=${Math.floor(st.mtimeMs).toString(36)}`;
+  } catch {
+    return `/static/${name}`;
+  }
+}
 
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({
@@ -73,7 +84,6 @@ function layout({
     ['/scan', t(L, 'navScan'), 'scan'],
     ['/compare', t(L, 'navCompare'), 'compare'],
     ['/pricing', t(L, 'navPricing'), 'pricing'],
-    [account ? '/app' : '/login', account ? t(L, 'navDashboard') : t(L, 'navLogin'), 'app'],
   ];
   const navHtml = nav
     .map(
@@ -81,6 +91,9 @@ function layout({
         `<a href="${href}" class="${active === key ? 'active' : ''}">${esc(label)}</a>`
     )
     .join('');
+
+  const authHref = account ? '/app' : '/login';
+  const authLabel = account ? t(L, 'navDashboard') : t(L, 'navLogin');
 
   const safePath = currentPath && currentPath.startsWith('/') ? currentPath : '/';
   const next = encodeURIComponent(safePath);
@@ -98,6 +111,7 @@ function layout({
 
   const drawerLinks = [
     ...nav.map(([href, label]) => `<a href="${href}">${esc(label)}</a>`),
+    `<a href="${authHref}">${esc(authLabel)}</a>`,
     ...(account ? [`<a href="/app/settings">${esc(t(L, 'navSettings'))}</a>`] : []),
   ].join('');
 
@@ -113,10 +127,11 @@ function layout({
 <meta property="og:title" content="${esc(title)} · TrapKey">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:type" content="website">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="${assetUrl('app.css')}">
 <link rel="icon" href="${FAVICON}">
 </head>
 <body class="${bodyClass}">
+<div class="scroll-rail" id="scrollRail" aria-hidden="true"></div>
 <a class="skip-link" href="#main-content">${esc(t(L, 'skipLink'))}</a>
 <div class="nav-wrap">
   <header class="nav">
@@ -124,7 +139,9 @@ function layout({
     <nav class="nav-links" aria-label="Primary">${navHtml}</nav>
     <div class="nav-right">
       ${langMenu}
-      ${account ? `<span class="who">${esc(account.email)}</span><a class="btn ghost sm" href="/app/settings">${esc(t(L, 'navSettings'))}</a>` : ''}
+      ${account
+        ? `<span class="who">${esc(account.email)}</span><a class="btn ${active === 'app' ? '' : 'ghost'} sm nav-auth" href="/app">${esc(t(L, 'navDashboard'))}</a><a class="btn ghost sm nav-settings" href="/app/settings">${esc(t(L, 'navSettings'))}</a>`
+        : `<a class="btn ${active === 'app' ? '' : 'ghost'} sm nav-auth" href="/login">${esc(t(L, 'navLogin'))}</a>`}
       <button class="menu-btn" id="menuToggle" type="button" aria-expanded="false" aria-controls="mobileDrawer" aria-label="${esc(t(L, 'menuOpen'))}">${ICON_MENU}</button>
     </div>
   </header>
@@ -143,57 +160,7 @@ function layout({
     <a href="/scan">${esc(t(L, 'navScan'))}</a>
   </div>
 </footer>
-<script>
-(() => {
-  const toggle = document.getElementById('menuToggle');
-  const drawer = document.getElementById('mobileDrawer');
-  if (toggle && drawer) {
-    toggle.addEventListener('click', () => {
-      const open = drawer.classList.toggle('open');
-      toggle.setAttribute('aria-expanded', String(open));
-      drawer.setAttribute('aria-hidden', String(!open));
-    });
-  }
-  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const blocks = document.querySelectorAll('.reveal-block');
-  if (reduced || !('IntersectionObserver' in window)) {
-    blocks.forEach((el) => el.classList.add('visible'));
-  } else if (blocks.length) {
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-          io.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.12 });
-    blocks.forEach((el) => io.observe(el));
-  }
-  const tagline = document.getElementById('taglineReveal');
-  if (tagline) {
-    const words = tagline.querySelectorAll('.reveal-word');
-    if (reduced || !('IntersectionObserver' in window)) {
-      words.forEach((w) => w.classList.add('lit'));
-    } else {
-      const tio = new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            words.forEach((w, idx) => {
-              setTimeout(() => w.classList.add('lit'), Math.min(idx * 45, 700));
-            });
-            tio.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.35 });
-      tio.observe(tagline);
-    }
-  }
-  document.addEventListener('click', (e) => {
-    const openMenu = document.querySelector('.lang-menu[open]');
-    if (openMenu && !openMenu.contains(e.target)) openMenu.removeAttribute('open');
-  });
-})();
-</script>
+<script src="${assetUrl('motion.js')}" defer></script>
 </body>
 </html>`;
 }
@@ -209,78 +176,62 @@ function landing({ lang = 'vi', currentPath = '/' } = {}) {
     .join(' ');
 
   const body = `
-<section class="hero section">
-  <div class="kicker">${esc(t(L, 'landingKicker'))}</div>
-  <h1 class="hero-title heading-1">${esc(t(L, 'landingH1Line1'))}<br>${esc(t(L, 'landingH1Line2'))}</h1>
-  <p class="lede body-3 muted">${t(L, 'landingLede')}</p>
-  <div class="cta-row">
-    <a class="btn" href="/scan">${esc(t(L, 'landingCtaPrimary'))}</a>
-    <a class="btn ghost" href="/demo">${esc(t(L, 'heroCtaDemo'))}</a>
-  </div>
-  <p class="caption-5 muted">${esc(t(L, 'landingProof'))}</p>
-
-  <div class="hero-preview">
-    <div class="preview-bar">
-      <span>${esc(t(L, 'heroPreviewTitle'))}</span>
-      <div class="demo-tabs" style="margin-bottom:0">
-        <button class="demo-tab active" type="button" data-demo-tab="before" aria-pressed="true">${esc(t(L, 'demoBeforeTab'))}</button>
-        <button class="demo-tab" type="button" data-demo-tab="after" aria-pressed="false">${esc(t(L, 'demoAfterTab'))}</button>
+<section class="hero-stage">
+  <div class="hero-grid">
+    <div class="hero-copy">
+      <div class="kicker motion-in" style="--d:0"><span class="pulse-dot" aria-hidden="true"></span>${esc(t(L, 'landingKicker'))}</div>
+      <h1 class="hero-title motion-in" style="--d:1"><span class="hero-line">${esc(t(L, 'landingH1Line1'))}</span><span class="hero-line hero-accent">${esc(t(L, 'landingH1Line2'))}</span></h1>
+      <p class="hero-sub motion-in" style="--d:2">${t(L, 'landingLede')}</p>
+      <div class="cta-row motion-in" style="--d:3"><a class="btn" href="/scan">${esc(t(L, 'landingCtaPrimary'))}<span class="btn-arrow" aria-hidden="true">→</span></a><a class="btn ghost" href="/demo">${esc(t(L, 'heroCtaDemo'))}</a></div>
+    </div>
+    <div class="hero-showcase motion-in" style="--d:4">
+      <div class="xray-stage" data-tilt>
+        <div class="xray-head">
+          <div class="xray-win"><span class="win-dot"></span><span class="win-dot"></span><span class="win-dot"></span><span class="xray-file" id="xrayFile">InvoicePro.exe</span></div>
+          <div class="demo-tabs segmented">
+            <button class="demo-tab active" type="button" data-demo-tab="before" data-file="InvoicePro.exe" aria-pressed="true"><span class="status-dot bad" aria-hidden="true"></span>${esc(t(L, 'demoBeforeTab'))}</button>
+            <button class="demo-tab" type="button" data-demo-tab="after" data-file="InvoicePro.protected.exe" aria-pressed="false"><span class="status-dot ok" aria-hidden="true"></span>${esc(t(L, 'demoAfterTab'))}</button>
+          </div>
+        </div>
+        <div class="xray-panel panel-enter" data-demo-panel="before">
+          <div class="xray-metrics">
+            <span class="xray-big bad">~8.2s</span>
+            <span class="xray-mid bad">risk 88/100</span>
+            <span class="xray-mid">p=0.95</span>
+            <svg class="xray-ring" width="44" height="44" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--surface-2, #171920)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="var(--bad, #ef4444)" stroke-width="3" stroke-dasharray="100.5" stroke-dashoffset="${100.5 * (1 - 0.88)}" transform="rotate(-90 18 18)"/></svg>
+          </div>
+          <div class="byte-stream">
+            <div class="scan-beam" aria-hidden="true"></div>
+            <div class="byte-label">LicenseService::CheckLicenseKey</div>
+            <div class="byte-cells"><span class="bcell flip">2D</span><span class="bcell flip">0C</span><span class="bcell">→</span><span class="bcell flip">2C</span><span class="bcell flip">0C</span></div>
+            <div class="byte-tag">2 bytes · verified</div>
+          </div>
+          <div class="xray-chips"><span class="xchip bad">-25 CheckLicenseKey</span><span class="xchip bad">-18 Readable .NET IL</span></div>
+        </div>
+        <div class="xray-panel" data-demo-panel="after" hidden>
+          <div class="xray-metrics">
+            <span class="xray-big ok">~14.2 ${esc(t(L, 'minUnit'))}</span>
+            <span class="xray-mid ok">risk 34/100</span>
+            <span class="xray-mid">p=0.38</span>
+            <svg class="xray-ring" width="44" height="44" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--surface-2, #171920)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="var(--ok, #10b981)" stroke-width="3" stroke-dasharray="100.5" stroke-dashoffset="${100.5 * (1 - 0.34)}" transform="rotate(-90 18 18)"/></svg>
+          </div>
+          <div class="decoy-mesh">
+            <div class="decoy-label">FAILED — chased decoy traps, no verified patch</div>
+            <div class="decoy-nodes">${Array.from({length: 14}, (_, i) => `<span class="dnode">#${String(i + 1).padStart(2, '0')}</span>`).join('')}</div>
+          </div>
+          <div class="xray-chips"><span class="xchip ok">+24 Decoy Kit (14 traps)</span><span class="xchip ok">+15 Symbols Stripped</span></div>
+        </div>
+        <div class="xray-foot">
+          <span class="caption-5 muted">InvoicePro.exe vs InvoicePro.protected.exe</span>
+          <a class="xray-link" href="/demo">${esc(t(L, 'demoOpenFull'))} →</a>
+        </div>
       </div>
     </div>
-    <div data-demo-panel="before">
-      <pre class="preview-body" style="margin:0;border:0;padding:0;background:transparent">InvoicePro.exe · risk 88/100 · ~8.2s (p=0.95)
-
-[SIM] CRACK SIMULATION — deepseek-v4.1-flash, 4.3s
-  Method : LicenseService::CheckLicenseKey
-  Patch  : offset 0x0029: 2d0c → 2c0c (2 bytes, verified)
-
-Leaks
-  -25  CheckLicenseKey, ActivateTrial
-  -18  .NET IL readable without obfuscation</pre>
-      <div class="preview-plain">${esc(t(L, 'demoBeforePlain'))}</div>
-    </div>
-    <div data-demo-panel="after" hidden>
-      <pre class="preview-body" style="margin:0;border:0;padding:0;background:transparent">InvoicePro.protected.exe · risk 34/100 · ~14.2 ${esc(t(L, 'minUnit'))} (p=0.38)
-
-[SIM] CRACK SIMULATION — gpt-6-luna, 7.9s
-  Result : FAILED — chased decoy traps, no verified patch
-
-Protections
-  +24  TrapKey Decoy Kit (14 multi-point decoy traps)
-  +15  Symbol renaming + debug symbols stripped</pre>
-      <div class="preview-plain">${esc(t(L, 'demoAfterPlain'))}</div>
-    </div>
-    <div class="preview-foot">
-      <span class="caption-5 muted">InvoicePro.exe vs InvoicePro.protected.exe</span>
-      <a class="btn ghost sm" href="/demo">${esc(t(L, 'demoOpenFull'))} →</a>
-    </div>
   </div>
-</section>
-<script>
-(() => {
-  const tabs = document.querySelectorAll('[data-demo-tab]');
-  const panels = document.querySelectorAll('[data-demo-panel]');
-  tabs.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const target = btn.getAttribute('data-demo-tab');
-      tabs.forEach((b) => {
-        const on = b === btn;
-        b.classList.toggle('active', on);
-        b.setAttribute('aria-pressed', String(on));
-      });
-      panels.forEach((p) => {
-        p.hidden = p.getAttribute('data-demo-panel') !== target;
-      });
-    });
-  });
-})();
-</script>
-
-<section class="section reveal-block">
-  <div class="card wide">
-    <div class="step">${esc(t(L, 'problemKicker'))}</div>
-    <h2 class="heading-5">${esc(t(L, 'problemTitle'))}</h2>
-    <p class="body-3 muted" style="margin-bottom:0">${esc(t(L, 'problemBody'))}</p>
+  <div class="hero-hud">
+    <div class="hud-pillars">${esc(t(L, 'landingProof'))}</div>
+    <div class="hud-stats"><span class="hud-stat"><strong data-count="260" data-suffix="+">260+</strong> tests</span><span class="hud-stat"><strong data-count="12">12</strong> langs</span><span class="hud-stat"><strong>0</strong> deps</span></div>
+    <div class="hud-scroll"><span class="hud-scroll-label">SCROLL</span><span class="hud-scroll-track"><span id="hudScrollFill"></span></span><span class="hud-scroll-pct" id="scrollPct">0%</span></div>
   </div>
 </section>
 
@@ -293,18 +244,21 @@ Protections
 <section class="section reveal-block">
   <div class="step">${esc(t(L, 'benefitsKicker'))}</div>
   <h2 class="heading-4" style="margin-bottom:var(--s-300)">${esc(t(L, 'benefitsTitle'))}</h2>
-  <div class="grid three">
-    <article class="card">
+  <div class="bento-grid">
+    <article class="card bento-card" data-spotlight>
+      <div class="bento-visual"><svg width="84" height="84" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="40" cy="40" r="30" opacity="0.2"/><circle cx="40" cy="40" r="20" opacity="0.4"/><circle cx="40" cy="40" r="10"/><line x1="40" y1="10" x2="40" y2="6"/><line x1="40" y1="70" x2="40" y2="74"/><line x1="10" y1="40" x2="6" y2="40"/><line x1="70" y1="40" x2="74" y2="40"/></svg></div>
       <div class="step">01</div>
       <h3 class="heading-6">${esc(t(L, 'step1Title'))}</h3>
       <p class="body-6 muted" style="margin-bottom:0">${t(L, 'step1Body')}</p>
     </article>
-    <article class="card">
+    <article class="card bento-card" data-spotlight>
+      <div class="bento-visual"><svg width="84" height="84" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 60 L40 20 L60 60" opacity="0.3"/><circle cx="40" cy="20" r="4"/><circle cx="25" cy="50" r="3"/><circle cx="55" cy="50" r="3"/><line x1="40" y1="24" x2="25" y2="47" stroke-dasharray="3 3"/><line x1="40" y1="24" x2="55" y2="47" stroke-dasharray="3 3"/><line x1="25" y1="50" x2="55" y2="50" stroke-dasharray="3 3"/></svg></div>
       <div class="step">02</div>
       <h3 class="heading-6">${esc(t(L, 'step2Title'))}</h3>
       <p class="body-6 muted" style="margin-bottom:0">${t(L, 'step2Body')}</p>
     </article>
-    <article class="card">
+    <article class="card bento-card" data-spotlight>
+      <div class="bento-visual"><svg width="84" height="84" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="15" y="50" width="12" height="20" rx="2" opacity="0.3"/><rect x="34" y="30" width="12" height="40" rx="2" opacity="0.5"/><rect x="53" y="15" width="12" height="55" rx="2"/><line x1="10" y1="70" x2="70" y2="70" opacity="0.2"/></svg></div>
       <div class="step">03</div>
       <h3 class="heading-6">${esc(t(L, 'step3Title'))}</h3>
       <p class="body-6 muted" style="margin-bottom:0">${t(L, 'step3Body')}</p>
@@ -312,21 +266,24 @@ Protections
   </div>
 </section>
 
-<section class="section reveal-block">
+<section class="pipeline-section section reveal-block">
   <div class="step">${esc(t(L, 'howKicker'))}</div>
   <h2 class="heading-4" style="margin-bottom:var(--s-300)">${esc(t(L, 'howTitle'))}</h2>
-  <div class="grid three">
-    <div class="card">
+  <p class="muted" style="max-width:640px">${esc(t(L, 'problemTitle'))}</p>
+  <div class="pipeline-track">
+    <div class="pipe-node card">
       <div class="step">STEP 01</div>
       <h3 class="title-2">${esc(t(L, 'how1Title'))}</h3>
       <p class="body-6 muted" style="margin-bottom:0">${t(L, 'how1Body')}</p>
     </div>
-    <div class="card">
+    <svg class="pipe-connector" width="40" height="20" viewBox="0 0 40 20" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.3"/></svg>
+    <div class="pipe-node card">
       <div class="step">STEP 02</div>
       <h3 class="title-2">${esc(t(L, 'how2Title'))}</h3>
       <p class="body-6 muted" style="margin-bottom:0">${t(L, 'how2Body')}</p>
     </div>
-    <div class="card">
+    <svg class="pipe-connector" width="40" height="20" viewBox="0 0 40 20" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.3"/></svg>
+    <div class="pipe-node card">
       <div class="step">STEP 03</div>
       <h3 class="title-2">${esc(t(L, 'how3Title'))}</h3>
       <p class="body-6 muted" style="margin-bottom:0">${t(L, 'how3Body')}</p>
@@ -334,29 +291,27 @@ Protections
   </div>
 </section>
 
-<section class="section reveal-block">
-  <div class="card wide">
+<section class="faq-split section reveal-block">
+  <div class="faq-intro">
     <h2 class="heading-5">${esc(t(L, 'formulaHeading'))}</h2>
     <p class="body-3 muted">${t(L, 'formulaExplain')}</p>
-    <p class="caption-5 muted mono" style="margin-bottom:0">
+    <div class="formula-box">
       <code>seconds = tool_time + read_budget / prefill_rate + rounds * 1200 / decode_rate</code>
-    </p>
+    </div>
   </div>
-</section>
-
-<section class="section reveal-block">
-  <div class="card wide">
+  <div class="faq-list">
     <h2 class="heading-5">${esc(t(L, 'faqTitle'))}</h2>
-    <details class="faq"><summary>${esc(t(L, 'faq1Q'))}</summary><p>${esc(t(L, 'faq1A'))}</p></details>
-    <details class="faq"><summary>${esc(t(L, 'faq2Q'))}</summary><p>${esc(t(L, 'faq2A'))}</p></details>
-    <details class="faq"><summary>${esc(t(L, 'faq3Q'))}</summary><p>${esc(t(L, 'faq3A'))}</p></details>
-    <details class="faq"><summary>${esc(t(L, 'faq4Q'))}</summary><p>${esc(t(L, 'faq4A'))}</p></details>
-    <details class="faq"><summary>${esc(t(L, 'faq5Q'))}</summary><p>${esc(t(L, 'faq5A'))}</p></details>
-    <details class="faq"><summary>${esc(t(L, 'faq6Q'))}</summary><p>${esc(t(L, 'faq6A'))}</p></details>
+    <details class="faq"><summary>${esc(t(L, 'faq1Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq1A'))}</p></details>
+    <details class="faq"><summary>${esc(t(L, 'faq2Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq2A'))}</p></details>
+    <details class="faq"><summary>${esc(t(L, 'faq3Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq3A'))}</p></details>
+    <details class="faq"><summary>${esc(t(L, 'faq4Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq4A'))}</p></details>
+    <details class="faq"><summary>${esc(t(L, 'faq5Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq5A'))}</p></details>
+    <details class="faq"><summary>${esc(t(L, 'faq6Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq6A'))}</p></details>
   </div>
 </section>
 
-<section class="hero reveal-block" style="padding-top:var(--s-300)">
+<section class="cta-stage reveal-block">
+  <div class="stage-orb" aria-hidden="true"></div>
   <h2 class="heading-3" style="max-width:680px;margin:0 auto var(--s-200)">${esc(t(L, 'finalCtaTitle'))}</h2>
   <p class="lede body-3 muted">${esc(t(L, 'finalCtaBody'))}</p>
   <div class="cta-row">
@@ -365,7 +320,7 @@ Protections
   </div>
 </section>
 `;
-  return layout({ title: t(L, 'landingTitle'), body, active: '', lang: L, currentPath });
+  return layout({ title: t(L, 'landingTitle'), body, active: '', bodyClass: 'landing-page', lang: L, currentPath });
 }
 
 /* -------------------------------- scan -------------------------------- */
@@ -399,12 +354,12 @@ function scanPage({
   data-msg-net-err="${esc(t(L, 'uploadNetErr'))}">
   <input type="file" id="file" accept=".exe,.dll,.bin,.sys" hidden>
   <div class="drop-inner">
-    <div class="drop-icon">${ICON_UPLOAD}</div>
+    <div class="drop-radar"><svg width="80" height="80" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><circle cx="40" cy="40" r="36" opacity="0.1"/><circle cx="40" cy="40" r="24" opacity="0.15"/><circle cx="40" cy="40" r="12" opacity="0.2"/></svg>${ICON_UPLOAD}</div>
     <p>${t(L, 'dropPrompt')}</p>
     <p class="caption-5 muted">${esc(t(L, 'dropLimit'))}</p>
-    <div class="row">
-      <label class="radio"><input type="radio" name="mode" value="static" checked> ${esc(t(L, 'modeStatic'))} <span class="muted">${esc(t(L, 'modeStaticHint'))}</span></label>
-      <label class="radio"><input type="radio" name="mode" value="ai" ${aiAvailable ? '' : 'disabled'}> ${esc(t(L, 'modeAi'))} <span class="muted">${esc(t(L, 'modeAiHint', { note: aiNote }))}</span></label>
+    <div class="mode-switch">
+      <label class="radio mode-pill"><input type="radio" name="mode" value="static" checked> ${esc(t(L, 'modeStatic'))} <span class="muted">${esc(t(L, 'modeStaticHint'))}</span></label>
+      <label class="radio mode-pill"><input type="radio" name="mode" value="ai" ${aiAvailable ? '' : 'disabled'}> ${esc(t(L, 'modeAi'))} <span class="muted">${esc(t(L, 'modeAiHint', { note: aiNote }))}</span></label>
     </div>
     ${cooling ? `<p class="caption-5 muted">${esc(t(L, 'aiCoolingFull', { m: cooldownMinutes }))}</p>` : ''}
     ${account ? '' : `<p class="caption-5 muted">${t(L, 'anonNotice', { left: anonymousLeft })}</p>`}
@@ -416,16 +371,16 @@ function scanPage({
 
 <section id="result"></section>
 
-<section class="card wide" id="privacy">
+<section class="privacy-strip" id="privacy">
   <h2>${esc(t(L, 'privacyBoxTitle'))}</h2>
-  <ul class="ticks">
-    <li>${t(L, 'privacyItem1')}</li>
-    <li>${esc(t(L, 'privacyItem2'))}</li>
-    <li>${t(L, 'privacyItem3')}</li>
-  </ul>
+  <div class="privacy-cols">
+    <div>${t(L, 'privacyItem1')}</div>
+    <div>${esc(t(L, 'privacyItem2'))}</div>
+    <div>${t(L, 'privacyItem3')}</div>
+  </div>
 </section>
 
-<script src="/static/scan.js"></script>
+<script src="${assetUrl('scan.js')}"></script>
 `;
   return layout({
     title: t(L, 'scanTitle'),
@@ -579,6 +534,7 @@ function reportView(
       <div class="caption-5 muted">${esc(t(L, 'crackTargetSub'))}</div>
     </div>
     <div class="risk">
+      <svg class="risk-dial" width="52" height="52" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="var(--surface-2, #171920)" stroke-width="4"/><circle cx="32" cy="32" r="28" fill="none" stroke="${risk >= 70 ? 'var(--bad, #ef4444)' : risk >= 40 ? 'var(--warn, #f59e0b)' : 'var(--ok, #10b981)'}" stroke-width="4" stroke-dasharray="175.9" stroke-dashoffset="${(175.9 * (1 - risk / 100)).toFixed(1)}" transform="rotate(-90 32 32)"/></svg>
       <div class="risk-num ${riskClass(risk)}">${risk}<span>/100</span></div>
       <div class="caption-5 muted mono">RISK</div>
     </div>
@@ -654,7 +610,7 @@ function reportView(
 function loginPage({ sent = false, error = null, lang = 'vi', currentPath = '/login' } = {}) {
   const L = normalizeLang(lang);
   const body = `
-<section class="panel">
+<section class="panel motion-in">
   <h1>${esc(t(L, 'loginTitle'))}</h1>
   ${error ? `<div class="alert bad">${esc(error)}</div>` : ''}
   ${sent
@@ -665,7 +621,7 @@ function loginPage({ sent = false, error = null, lang = 'vi', currentPath = '/lo
          <button class="btn" type="submit">${esc(t(L, 'loginButton'))}</button>
        </form>`}
 </section>`;
-  return layout({ title: t(L, 'loginTitle'), body, active: 'app', lang: L, currentPath });
+  return layout({ title: t(L, 'loginTitle'), body, active: 'app', bodyClass: 'center-page', lang: L, currentPath });
 }
 
 /* ------------------------------ dashboard ------------------------------ */
@@ -912,6 +868,11 @@ function compareResultHtml(result, lang = 'vi') {
         </table>
       </div>
     </div>
+    <div class="delta-strip">
+      <div class="delta-tile"><span class="delta-val">${result.delta.seconds_best >= 0 ? '+' : ''}${result.delta.seconds_best}s</span><span class="delta-key">Crack</span></div>
+      <div class="delta-tile"><span class="delta-val">${result.delta.p_success >= 0 ? '+' : ''}${result.delta.p_success}</span><span class="delta-key">P(success)</span></div>
+      <div class="delta-tile"><span class="delta-val">${result.delta.risk >= 0 ? '+' : ''}${result.delta.risk}</span><span class="delta-key">Risk</span></div>
+    </div>
     <table class="kv">
       <tr><td>Δ crack (best)</td><td>${result.delta.seconds_best >= 0 ? '+' : ''}${result.delta.seconds_best}s</td></tr>
       <tr><td>Δ p_success</td><td>${result.delta.p_success >= 0 ? '+' : ''}${result.delta.p_success}</td></tr>
@@ -1066,7 +1027,8 @@ function pricingPage({ account, lang = 'vi', currentPath = '/pricing' }) {
     .map((p) => {
       const current = account && account.plan === p.id;
       const features = planFeatures(L, p.id, p.features);
-      return `<div class="card plan ${p.id === 'audit' ? 'featured' : ''}">
+      return `<div class="card plan ${p.id === 'audit' ? 'featured' : ''}" data-spotlight>
+        ${p.id === 'audit' ? '<span class="plan-badge">AUDIT</span>' : ''}
         <div class="plan-name">${esc(p.label)}</div>
         <div class="plan-price">${priceSuffix(p)}</div>
         <ul class="ticks">${features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
@@ -1084,19 +1046,21 @@ function pricingPage({ account, lang = 'vi', currentPath = '/pricing' }) {
   const body = `
 <section class="hero compact"><h1>${esc(t(L, 'pricingTitle'))}</h1><p class="lede muted">${t(L, 'pricingLede')}</p></section>
 <div id="checkoutNotice" hidden></div>
-<section class="grid three">${cards}</section>
-<section class="card wide">
+<section class="pricing-grid">${cards}</section>
+<section class="consulting-banner">
   <h2>${esc(t(L, 'consultingTitle'))}</h2>
   <p class="muted" style="margin-bottom:0">${esc(t(L, 'consultingBody'))}</p>
 </section>
 <section class="card wide">
+  <div class="faq-list">
   <h2>${esc(t(L, 'faqTitle'))}</h2>
-  <details class="faq"><summary>${esc(t(L, 'faq1Q'))}</summary><p>${esc(t(L, 'faq1A'))}</p></details>
-  <details class="faq"><summary>${esc(t(L, 'faq2Q'))}</summary><p>${esc(t(L, 'faq2A'))}</p></details>
-  <details class="faq"><summary>${esc(t(L, 'faq3Q'))}</summary><p>${esc(t(L, 'faq3A'))}</p></details>
-  <details class="faq"><summary>${esc(t(L, 'faq4Q'))}</summary><p>${esc(t(L, 'faq4A'))}</p></details>
-  <details class="faq"><summary>${esc(t(L, 'faq5Q'))}</summary><p>${esc(t(L, 'faq5A'))}</p></details>
-  <details class="faq"><summary>${esc(t(L, 'faq6Q'))}</summary><p>${esc(t(L, 'faq6A'))}</p></details>
+  <details class="faq"><summary>${esc(t(L, 'faq1Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq1A'))}</p></details>
+  <details class="faq"><summary>${esc(t(L, 'faq2Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq2A'))}</p></details>
+  <details class="faq"><summary>${esc(t(L, 'faq3Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq3A'))}</p></details>
+  <details class="faq"><summary>${esc(t(L, 'faq4Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq4A'))}</p></details>
+  <details class="faq"><summary>${esc(t(L, 'faq5Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq5A'))}</p></details>
+  <details class="faq"><summary>${esc(t(L, 'faq6Q'))}<span class="faq-icon" aria-hidden="true">+</span></summary><p>${esc(t(L, 'faq6A'))}</p></details>
+  </div>
 </section>
 <script>
 const notice = document.getElementById('checkoutNotice');
@@ -1155,9 +1119,10 @@ function notFound({ account = null, lang = 'vi', currentPath = '/' } = {}) {
   return layout({
     title: t(L, 'notFoundTitle'),
     account,
+    bodyClass: 'center-page',
     lang: L,
     currentPath,
-    body: `<section class="panel"><h1>404</h1><p class="muted">${esc(t(L, 'notFoundBody'))}</p><a class="btn" href="/scan">${esc(t(L, 'notFoundCta'))}</a></section>`,
+    body: `<section class="panel motion-in"><h1>404</h1><p class="muted">${esc(t(L, 'notFoundBody'))}</p><a class="btn" href="/scan">${esc(t(L, 'notFoundCta'))}</a></section>`,
   });
 }
 
@@ -1166,9 +1131,10 @@ function errorPage(message, { account = null, lang = 'vi', currentPath = '/' } =
   return layout({
     title: t(L, 'errorTitle'),
     account,
+    bodyClass: 'center-page',
     lang: L,
     currentPath,
-    body: `<section class="panel"><h1>${esc(t(L, 'errorHeading'))}</h1><p class="muted">${esc(message)}</p><a class="btn" href="/">${esc(t(L, 'errorHome'))}</a></section>`,
+    body: `<section class="panel motion-in"><h1>${esc(t(L, 'errorHeading'))}</h1><p class="muted">${esc(message)}</p><a class="btn" href="/">${esc(t(L, 'errorHome'))}</a></section>`,
   });
 }
 

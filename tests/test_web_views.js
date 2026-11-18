@@ -287,9 +287,11 @@ test('supports 10-15 languages and renders all 12 cleanly', () => {
     assert.match(land, new RegExp(`<html lang="${item.code}">`));
     assert.match(land, /id="taglineReveal"/);
     assert.match(land, /class="reveal-word"/);
+    assert.doesNotMatch(land, /&amp;(?:amp|lt|gt|quot|#\d+);/);
     const price = views.pricingPage({ account: null, lang: item.code, currentPath: '/pricing' });
     assert.match(price, /\$49/);
     assert.match(price, /\$199/);
+    assert.doesNotMatch(price, /&amp;(?:amp|lt|gt|quot|#\d+);/);
     const feats = i18n.planFeatures(item.code, 'audit', []);
     assert.ok(Array.isArray(feats) && feats.length >= 3, `missing audit features for ${item.code}`);
   }

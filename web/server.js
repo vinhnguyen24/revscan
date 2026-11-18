@@ -663,7 +663,7 @@ function createServer(options = {}) {
     const ext = path.extname(file);
     send(ctx.res, 200, fs.readFileSync(file), {
       'content-type': MIME[ext] || 'application/octet-stream',
-      'cache-control': 'public, max-age=3600',
+      'cache-control': ctx.url.searchParams.get('v') ? 'public, max-age=31536000, immutable' : 'no-cache',
     });
   });
 
