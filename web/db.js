@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   email          TEXT UNIQUE NOT NULL,
   plan           TEXT NOT NULL DEFAULT 'free',
   credits_static INTEGER NOT NULL DEFAULT 5,
-  credits_ai     INTEGER NOT NULL DEFAULT 1,
+  credits_ai     INTEGER NOT NULL DEFAULT 3,
   period_start   INTEGER NOT NULL,
   api_token_hash TEXT,
   is_admin       INTEGER NOT NULL DEFAULT 0,

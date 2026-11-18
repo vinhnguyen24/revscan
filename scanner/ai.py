@@ -174,7 +174,13 @@ def resolve_config() -> dict:
     }
 
 
-def _code_evidence(ev: Evidence, budget: int) -> str:
+def _code_evidence(
+    ev: Evidence,
+    budget: int,
+    *,
+    show_bytes: bool = False,
+    target_name: str | None = None,
+) -> str:
     """IL for .NET, xref-selected disassembly for native. Never raises: a missing
     objdump or a hostile PE must not break a paid scan."""
     if not code_enabled() or ev.pe is None:
@@ -183,7 +189,12 @@ def _code_evidence(ev: Evidence, budget: int) -> str:
         if ev.dotnet and ev.dotnet.ok:
             from .il import dotnet_code
 
-            return dotnet_code(ev.dotnet, budget_chars=budget)
+            return dotnet_code(
+                ev.dotnet,
+                budget_chars=budget,
+                target_name=target_name,
+                show_bytes=show_bytes,
+            )
         from .native import native_code
 
         return native_code(ev.pe, ev.strings, ev.path, budget_chars=budget)
@@ -512,8 +523,472 @@ def measure(ev: Evidence, timeout: int = 120) -> dict:
         "model": cfg["model"],
         "success": grounded,
         "grounded": grounded,
+        "raw_function": raw_value,
         "output_sample": text[:400],
         "input_chars": len(pack),
         "code_chars": meta.get("code_chars", 0),
         "usage": usage,
     }
+
+
+# ---------------------------------------------------------------------------
+# Round 2 — Crack Simulation
+# ---------------------------------------------------------------------------
+
+PROMPT_ROUND2 = """\
+You are a software security auditor analysing the disassembled control flow of \
+the function identified below.
+
+Task: locate the primary conditional branch or boolean return instruction that \
+gates the validation result, so the developer can see the single point of \
+failure that needs hardening.
+
+Answer in this exact format (every field is required):
+
+OFFSET: <hex IL/instruction offset from the start of the function, e.g. 0x0029>
+KIND: <branch|return|constant>
+INSTRUCTION: <exact instruction at that offset, e.g. brtrue.s IL_0037>
+EXPLANATION: <one line describing what condition this instruction evaluates>
+CONFIDENCE: <high|medium|low>
+
+Rules:
+- Only report an OFFSET that appears verbatim in the disassembled evidence below (e.g. IL_0029 -> 0x0029).
+- Prefer the final conditional branch before success, or an early false return (`ldc.i4.0`).
+- If no disassembled instructions are present in the evidence, answer: KIND: none
+
+Evidence:
+"""
+
+
+# IL conditional branch pairs: opcode -> (inverse_opcode, operand_width, mnemonic, inverse_mnemonic)
+_IL_BRANCH_INVERSE: dict[int, tuple[int, int, str, str]] = {
+    0x2C: (0x2D, 1, "brfalse.s", "brtrue.s"),
+    0x2D: (0x2C, 1, "brtrue.s", "brfalse.s"),
+    0x2E: (0x33, 1, "beq.s", "bne.un.s"),
+    0x2F: (0x32, 1, "bge.s", "blt.s"),
+    0x30: (0x31, 1, "bgt.s", "ble.s"),
+    0x31: (0x30, 1, "ble.s", "bgt.s"),
+    0x32: (0x2F, 1, "blt.s", "bge.s"),
+    0x33: (0x2E, 1, "bne.un.s", "beq.s"),
+    0x34: (0x37, 1, "bge.un.s", "blt.un.s"),
+    0x35: (0x36, 1, "bgt.un.s", "ble.un.s"),
+    0x36: (0x35, 1, "ble.un.s", "bgt.un.s"),
+    0x37: (0x34, 1, "blt.un.s", "bge.un.s"),
+    0x39: (0x3A, 4, "brfalse", "brtrue"),
+    0x3A: (0x39, 4, "brtrue", "brfalse"),
+    0x3B: (0x40, 4, "beq", "bne.un"),
+    0x3C: (0x3F, 4, "bge", "blt"),
+    0x3D: (0x3E, 4, "bgt", "ble"),
+    0x3E: (0x3D, 4, "ble", "bgt"),
+    0x3F: (0x3C, 4, "blt", "bge"),
+    0x40: (0x3B, 4, "bne.un", "beq"),
+    0x41: (0x44, 4, "bge.un", "blt.un"),
+    0x42: (0x43, 4, "bgt.un", "ble.un"),
+    0x43: (0x42, 4, "ble.un", "bgt.un"),
+    0x44: (0x41, 4, "blt.un", "bge.un"),
+}
+
+
+def _build_round2_pack(
+    ev: Evidence,
+    round1: dict,
+    max_chars: int = 30_000,
+) -> str:
+    """Build a focused evidence pack for the function identified in Round 1."""
+    func_name = round1.get("raw_function", "")
+    parts: list[str] = [
+        f"file: {os.path.basename(ev.path)}",
+        f"kind: {ev.kind}",
+        f"target_function: {func_name}",
+    ]
+
+    # Include the disassembled code with exact byte encodings so the model can
+    # propose grounded ORIGINAL/PATCHED hex bytes without guessing opcodes.
+    code = _code_evidence(ev, max_chars, show_bytes=True, target_name=func_name)
+    if code:
+        parts.append(code)
+
+    # Include licence-relevant strings as context
+    license_strings = ev.license_strings
+    if license_strings:
+        parts.append("license_strings:\n" + "\n".join(s[:200] for s in license_strings[:50]))
+
+    return "\n\n".join(parts)[:max_chars]
+
+
+def _derive_il_patch(ev: Evidence, offset: int, kind: str, target_name: str, insn_hint: str) -> dict | None:
+    """Resolve real IL bytes at `offset` and derive the deterministic minimal flip."""
+    if not (ev.dotnet and ev.dotnet.ok):
+        return None
+    bare = target_name.strip().split("::")[-1].split(".")[-1].lower()
+    candidates = []
+    other = []
+    for idx, m in enumerate(ev.dotnet.methods, start=1):
+        if not m["rva"]:
+            continue
+        full = ev.dotnet.resolve_token(0x06000000 | idx).lower()
+        if bare and (full == target_name.strip().lower() or m["name"].lower() == bare):
+            candidates.append((m["name"], ev.dotnet.method_body(m["rva"])))
+        else:
+            other.append((m["name"], ev.dotnet.method_body(m["rva"])))
+
+    hint_op = insn_hint.strip().split()[0].lower() if insn_hint.strip() else ""
+
+    for name, body in candidates + other:
+        if not body or offset < 0 or offset >= len(body):
+            continue
+        op = body[offset]
+        if op in _IL_BRANCH_INVERSE:
+            inv_op, op_w, mnem, inv_mnem = _IL_BRANCH_INVERSE[op]
+            if hint_op and hint_op != mnem and candidates and (name, body) not in candidates:
+                continue
+            if offset + 1 + op_w > len(body):
+                continue
+            orig = body[offset:offset + 1 + op_w]
+            patched = bytes([inv_op]) + orig[1:]
+            return {
+                "strategy": "patch-branch",
+                "offset": offset,
+                "original": orig.hex(),
+                "patched": patched.hex(),
+                "patch_size": len(orig),
+                "method": name,
+                "insn_flip": f"{mnem} -> {inv_mnem}",
+            }
+        if op == 0x16:  # ldc.i4.0 -> ldc.i4.1
+            return {
+                "strategy": "patch-return",
+                "offset": offset,
+                "original": "16",
+                "patched": "17",
+                "patch_size": 1,
+                "method": name,
+                "insn_flip": "ldc.i4.0 -> ldc.i4.1",
+            }
+        if op == 0x17:  # ldc.i4.1 -> ldc.i4.0
+            return {
+                "strategy": "patch-return",
+                "offset": offset,
+                "original": "17",
+                "patched": "16",
+                "patch_size": 1,
+                "method": name,
+                "insn_flip": "ldc.i4.1 -> ldc.i4.0",
+            }
+    return None
+
+
+def _parse_round2(
+    text: str,
+    ev: Evidence | None = None,
+    target_name: str = "",
+) -> dict | None:
+    """Parse Round 2 response (explicit patch OR audit decision-point format).
+
+    Returns None if the model could not identify a target instruction/patch.
+    """
+    lines = text.splitlines()
+    fields: dict[str, str] = {}
+    for line in lines:
+        line = line.strip()
+        for key in (
+            "STRATEGY", "OFFSET", "ORIGINAL", "PATCHED",
+            "KIND", "INSTRUCTION", "EXPLANATION", "CONFIDENCE",
+        ):
+            if line.upper().startswith(key + ":"):
+                fields[key.lower()] = line.split(":", 1)[1].strip()
+                break
+
+    strategy = fields.get("strategy", "").lower().strip()
+    kind = fields.get("kind", "").lower().strip()
+    if strategy == "none" or kind == "none":
+        return None
+
+    offset_raw = fields.get("offset", "").strip()
+    if not offset_raw:
+        return None
+    if offset_raw.upper().startswith("IL_"):
+        offset_raw = "0x" + offset_raw[3:]
+    try:
+        offset = int(offset_raw, 16) if offset_raw.lower().startswith("0x") else int(offset_raw)
+    except ValueError:
+        return None
+
+    # Path A: explicit STRATEGY + ORIGINAL + PATCHED bytes
+    if strategy:
+        orig_hex = re.sub(r"[\s,]", "", fields.get("original", ""))
+        patch_hex = re.sub(r"[\s,]", "", fields.get("patched", ""))
+        if not orig_hex or not patch_hex:
+            return None
+        try:
+            orig_bytes = bytes.fromhex(orig_hex)
+            patch_bytes = bytes.fromhex(patch_hex)
+        except ValueError:
+            return None
+        if len(orig_bytes) != len(patch_bytes) or len(orig_bytes) == 0 or len(orig_bytes) > 16:
+            return None
+        return {
+            "strategy": strategy,
+            "offset": offset,
+            "original": orig_bytes.hex(),
+            "patched": patch_bytes.hex(),
+            "patch_size": len(orig_bytes),
+            "explanation": fields.get("explanation", ""),
+            "confidence": fields.get("confidence", "low").lower(),
+        }
+
+    # Path B: audit decision-point format (KIND + OFFSET + INSTRUCTION) ->
+    # deterministically derive exact bytes from the binary.
+    if kind and ev is not None:
+        derived = _derive_il_patch(ev, offset, kind, target_name, fields.get("instruction", ""))
+        if not derived:
+            return None
+        derived["explanation"] = fields.get("explanation", "") or derived.get("insn_flip", "")
+        derived["confidence"] = fields.get("confidence", "medium").lower()
+        return derived
+
+    return None
+
+
+def verify_patch(ev: Evidence, patch: dict) -> dict:
+    """Verify a proposed patch against the actual binary/IL.
+
+    Returns a dict with 'valid' (bool), 'reason' (str), and optionally
+    'difficulty' (str).
+    """
+    offset = patch["offset"]
+    orig = bytes.fromhex(patch["original"])
+    patched = bytes.fromhex(patch["patched"])
+
+    # For .NET: verify against the IL body of the target method
+    if ev.dotnet and ev.dotnet.ok:
+        # Find a method whose body contains those bytes at that offset.
+        # The model gives offset relative to the method body start (IL_0000).
+        for m in ev.dotnet.methods:
+            if not m["rva"]:
+                continue
+            body = ev.dotnet.method_body(m["rva"])
+            if not body:
+                continue
+            if offset < 0 or offset + len(orig) > len(body):
+                continue
+            actual = body[offset:offset + len(orig)]
+            if actual == orig:
+                # Bytes match — this is the right method and the patch is grounded
+                difficulty = _assess_difficulty(orig, patched, patch.get("strategy", ""))
+                return {
+                    "valid": True,
+                    "reason": f"bytes at IL offset 0x{offset:04x} match: {orig.hex()} → {patched.hex()}",
+                    "method": m["name"],
+                    "difficulty": difficulty,
+                }
+        # Offset given but no method body has those bytes there
+        return {
+            "valid": False,
+            "reason": f"no method body contains {orig.hex()} at offset 0x{offset:04x}",
+            "difficulty": "unknown",
+        }
+
+    # For native: verify against file bytes
+    if ev.pe:
+        data = ev.pe.data
+        if 0 <= offset < len(data) and offset + len(orig) <= len(data):
+            actual = data[offset:offset + len(orig)]
+            if actual == orig:
+                difficulty = _assess_difficulty(orig, patched, patch.get("strategy", ""))
+                return {
+                    "valid": True,
+                    "reason": f"bytes at file offset 0x{offset:x} match: {orig.hex()} → {patched.hex()}",
+                    "difficulty": difficulty,
+                }
+            return {
+                "valid": False,
+                "reason": f"bytes at 0x{offset:x} are {actual.hex()}, not {orig.hex()}",
+                "difficulty": "unknown",
+            }
+        # Maybe the offset is an RVA — try converting
+        file_off = ev.pe.rva_to_offset(offset)
+        if file_off is not None and 0 <= file_off < len(data) and file_off + len(orig) <= len(data):
+            actual = data[file_off:file_off + len(orig)]
+            if actual == orig:
+                difficulty = _assess_difficulty(orig, patched, patch.get("strategy", ""))
+                return {
+                    "valid": True,
+                    "reason": f"bytes at RVA 0x{offset:x} (file 0x{file_off:x}) match",
+                    "method": None,
+                    "difficulty": difficulty,
+                }
+
+    return {
+        "valid": False,
+        "reason": "could not locate the specified bytes in the binary",
+        "difficulty": "unknown",
+    }
+
+
+def _assess_difficulty(orig: bytes, patched: bytes, strategy: str) -> str:
+    """Rate how easy the patch is: TRIVIAL / EASY / MODERATE."""
+    n = len(orig)
+    if n <= 2:
+        # 1-2 byte patch: branch flip, constant change
+        return "TRIVIAL"
+    if n <= 4:
+        return "EASY"
+    return "MODERATE"
+
+
+def crack_simulate(ev: Evidence, round1: dict, timeout: int = 120) -> dict:
+    """Round 2: given a successful Round 1, ask the model for a specific patch.
+
+    Returns a dict with crack_simulation data or an error.
+    """
+    if not round1.get("success"):
+        return {"error": "Round 1 did not find a function; skipping crack simulation"}
+
+    try:
+        cfg = resolve_config()
+    except AIConfigError as err:
+        return {"error": str(err), "error_code": "AI_CONFIG"}
+
+    raw_timeout = os.environ.get("TRAPKEY_AI_TIMEOUT", "")
+    if raw_timeout:
+        try:
+            timeout = max(5, int(raw_timeout))
+        except ValueError:
+            pass
+
+    pack = _build_round2_pack(ev, round1)
+    started = time.time()
+    try:
+        if cfg["style"] == "anthropic":
+            caller = _call_anthropic
+        elif cfg["style"] == "gemini":
+            caller = _call_gemini
+        else:
+            caller = _call_openai
+        text, usage = _call_round2(cfg, pack, timeout, caller)
+    except urllib.error.HTTPError as err:
+        raw = ""
+        try:
+            raw = err.read().decode("utf-8", "ignore")
+        except Exception:
+            pass
+        code, retry_after = classify_failure(err.code, raw)
+        return {
+            "error": f"{cfg['provider']} HTTP {err.code}: {raw[:600]}",
+            "error_code": code,
+            "retry_after": retry_after,
+        }
+    except Exception as err:
+        return {"error": f"Round 2 call failed: {err}", "error_code": "AI_NETWORK"}
+
+    elapsed = round(time.time() - started, 2)
+
+    if not text.strip():
+        return {
+            "error": f"{cfg['model']} returned no content for Round 2",
+            "error_code": "AI_EMPTY",
+        }
+
+    patch = _parse_round2(text, ev=ev, target_name=round1.get("raw_function", ""))
+    if not patch:
+        return {
+            "seconds": elapsed,
+            "model": cfg["model"],
+            "success": False,
+            "output_sample": text[:400],
+            "usage": usage,
+            "reason": "model could not propose a patch",
+        }
+
+    # Verify the patch against the actual binary
+    verification = verify_patch(ev, patch)
+    patch["verified"] = verification["valid"]
+    patch["verify_reason"] = verification["reason"]
+    patch["method"] = verification.get("method")
+    if verification["valid"]:
+        patch["difficulty"] = verification["difficulty"]
+
+    return {
+        "seconds": elapsed,
+        "model": cfg["model"],
+        "success": verification["valid"],
+        "patch": patch,
+        "output_sample": text[:400],
+        "usage": usage,
+    }
+
+
+def _call_round2(
+    cfg: dict, pack: str, timeout: int,
+    caller,
+) -> tuple[str, dict]:
+    """Dispatch Round 2 to the right provider, with its own prompt."""
+    prompt = PROMPT_ROUND2 + pack
+    # Round 2 computes jump offsets/bytes, so reasoning models can spend ~1k
+    # thinking tokens before emitting the structured patch.
+    budget_tokens = max(token_budget(), 2000)
+    if cfg["style"] == "openai":
+        headers = {"content-type": "application/json", "user-agent": "trapkey/1.0"}
+        if "opencode.ai/inference/go" in cfg["base"]:
+            headers["x-opencode-session"] = os.urandom(16).hex()
+        if not cfg["local"] or cfg["key"] != "local":
+            headers["authorization"] = f"Bearer {cfg['key']}"
+        body = {
+            "model": cfg["model"],
+            "temperature": 0,
+            "max_tokens": budget_tokens,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": "You are a precise reverse engineering assistant."},
+                {"role": "user", "content": prompt},
+            ],
+        }
+        effort = os.environ.get("TRAPKEY_AI_REASONING_EFFORT")
+        if effort:
+            body["reasoning_effort"] = effort
+        data = _post(f"{cfg['base']}/chat/completions", body, headers, timeout)
+        return data["choices"][0]["message"]["content"], data.get("usage") or {}
+    elif cfg["style"] == "anthropic":
+        headers = {
+            "content-type": "application/json",
+            "x-api-key": cfg["key"],
+            "anthropic-version": "2023-06-01",
+        }
+        body = {
+            "model": cfg["model"],
+            "max_tokens": budget_tokens,
+            "temperature": 0,
+            "stream": False,
+            "system": "You are a precise reverse engineering assistant.",
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        data = _post(f"{cfg['base']}/v1/messages", body, headers, timeout)
+        text = "".join(block.get("text", "") for block in data.get("content", []))
+        return text, data.get("usage") or {}
+    else:  # gemini
+        headers = {
+            "content-type": "application/json",
+            "x-goog-api-key": cfg["key"],
+        }
+        generation = {"temperature": 0, "maxOutputTokens": budget_tokens}
+        budget = gemini_thinking_budget()
+        if budget is not None:
+            generation["thinkingConfig"] = {"thinkingBudget": budget}
+        body = {
+            "systemInstruction": {
+                "parts": [{"text": "You are a precise reverse engineering assistant."}]
+            },
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": generation,
+        }
+        text, meta = _post_sse(
+            f"{cfg['base']}/models/{cfg['model']}:streamGenerateContent?alt=sse",
+            body, headers, timeout,
+        )
+        usage = {
+            "prompt_tokens": meta.get("promptTokenCount", 0),
+            "completion_tokens": meta.get("candidatesTokenCount", 0),
+            "total_tokens": meta.get("totalTokenCount", 0),
+        }
+        return text, usage

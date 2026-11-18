@@ -50,10 +50,17 @@
     box.appendChild(alert);
   }
 
+  const msg = {
+    tooLarge: drop.dataset.msgTooLarge || 'File exceeds 150MB limit.',
+    badExt: drop.dataset.msgBadExt || 'Only .exe, .dll, .bin, .sys are accepted.',
+    errPrefix: drop.dataset.msgErrPrefix || 'Error',
+    netErr: drop.dataset.msgNetErr || 'Could not reach server.',
+  };
+
   function upload(file) {
-    if (file.size > 150 * 1024 * 1024) return fail('File vượt quá 150MB.');
+    if (file.size > 150 * 1024 * 1024) return fail(msg.tooLarge);
     const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (!['exe', 'dll', 'bin', 'sys'].includes(ext)) return fail('Chỉ nhận .exe, .dll, .bin, .sys');
+    if (!['exe', 'dll', 'bin', 'sys'].includes(ext)) return fail(msg.badExt);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api/scan?mode=${encodeURIComponent(mode())}`);
@@ -66,11 +73,11 @@
       let json = null;
       try { json = JSON.parse(xhr.responseText); } catch { /* ignore */ }
       if (!json || !json.ok) {
-        return fail((json && json.error && json.error.message) || `Lỗi ${xhr.status}`);
+        return fail((json && json.error && json.error.message) || `${msg.errPrefix} ${xhr.status}`);
       }
       location.href = json.data.url;
     };
-    xhr.onerror = () => fail('Không kết nối được tới server.');
+    xhr.onerror = () => fail(msg.netErr);
     xhr.send(file);
   }
 })();

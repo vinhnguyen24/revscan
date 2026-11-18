@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -20,7 +21,26 @@ from scanner import collect, estimate, human_duration, render, render_json, to_d
 from scanner.peinfo import PEError
 
 
+def _load_dotenv() -> None:
+    """Load root .env into os.environ without overriding explicit shell variables."""
+    if os.environ.get("TRAPKEY_NO_DOTENV"):
+        return
+    env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.is_file():
+        return
+    for raw in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+
+
 def main(argv: list[str] | None = None) -> int:
+    _load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="+")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
@@ -42,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         if args.ai:
-            from scanner.ai import measure
+            from scanner.ai import measure, crack_simulate
 
             result = measure(ev)
             if result.get("error"):
@@ -85,6 +105,25 @@ def main(argv: list[str] | None = None) -> int:
                 f"measured: {result['model']} answered in {result['seconds']:.1f}s "
                 f"(one round, tool time not included), success={result['success']}"
             )
+
+            # Round 2: crack simulation — only if Round 1 succeeded
+            if result.get("success"):
+                r2 = crack_simulate(ev, result)
+                est.crack_simulation = r2
+                if not r2.get("error"):
+                    patch = r2.get("patch") or {}
+                    if patch:
+                        est.breakdown.append(
+                            f"crack simulation: {r2.get('model', '?')} proposed a "
+                            f"{patch.get('strategy', '?')} patch in "
+                            f"{r2.get('seconds', 0):.1f}s, "
+                            f"verified={r2.get('success', False)}"
+                        )
+                    else:
+                        est.breakdown.append(
+                            f"crack simulation: {r2.get('model', '?')} could not "
+                            f"propose a patch ({r2.get('seconds', 0):.1f}s)"
+                        )
 
         else:
             est = estimate(ev)

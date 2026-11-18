@@ -42,6 +42,27 @@ CRYPTO_IMPORTS = (
 )
 DEBUG_IMPORTS = ("isdebuggerpresent", "checkremotedebuggerpresent", "ntqueryinformationprocess")
 
+DECOY_FUNCTIONS = frozenset({
+    "ValidateLicenseToken",
+    "VerifyActivationSignature",
+    "CheckTrialExpiration",
+    "VerifyHardwareBinding",
+    "VerifySubscriptionState",
+    "CheckOfflineLease",
+    "ValidateSerialChecksum",
+    "VerifyEntitlementSlice",
+})
+DECOY_FUNCTIONS_NATIVE = frozenset({
+    "validate_license_token",
+    "verify_activation_signature",
+    "check_trial_expiration",
+    "verify_hardware_binding",
+    "verify_subscription_state",
+    "check_offline_lease",
+    "validate_serial_checksum",
+    "verify_entitlement_slice",
+})
+
 
 @dataclass
 class Evidence:
@@ -164,6 +185,10 @@ def collect(path: str) -> Evidence:
         ev.kind = "electron"
 
     _protection_markers(ev, data)
+    decoy = _detect_decoy_kit(ev, data, joined)
+    if decoy:
+        ev.stats["decoy_kit"] = decoy
+        ev.markers.append("decoy-kit")
     _findings(ev, joined)
 
     ev.stats = {
@@ -178,6 +203,7 @@ def collect(path: str) -> Evidence:
         "dotnet_il_bytes": ev.dotnet.total_il_bytes if ev.dotnet and ev.dotnet.ok else 0,
         "native_functions": ev.pe.function_count() if ev.pe else None,
         "obfuscated_names": ev.obfuscated_names,
+        "decoy_kit": decoy,
     }
     return ev
 
@@ -202,6 +228,106 @@ def _extract_strings(data: bytes, limit: int = 60_000) -> list[str]:
         if len(out) >= limit:
             break
     return out
+
+
+def _detect_decoy_kit(ev: Evidence, data: bytes, joined: str) -> dict | None:
+    """Detect source-level TrapKey Decoy Kit coverage (.NET IL or native)."""
+    if ev.dotnet and ev.dotnet.ok:
+        from .il import call_tokens
+
+        dotnet = ev.dotnet
+        has_decoy_type = any("TrapKeyDecoy" in t for t in dotnet.types)
+        decoy_names: set[str] = set()
+        verify_tokens: set[int] = set()
+        delayed_tokens: set[int] = set()
+        warmup_tokens: set[int] = set()
+        decoy_method_indices: set[int] = set()
+
+        for idx, m in enumerate(dotnet.methods, start=1):
+            owner = dotnet._method_owner(idx)
+            name = m["name"]
+            in_decoy_type = "TrapKeyDecoy" in owner
+            if in_decoy_type:
+                decoy_method_indices.add(idx)
+                if name in DECOY_FUNCTIONS:
+                    decoy_names.add(name)
+                elif name in ("Verify", "VerifySlice"):
+                    verify_tokens.add(0x06000000 | idx)
+                elif name == "ScheduleDelayedCheck":
+                    delayed_tokens.add(0x06000000 | idx)
+                elif name == "Warmup":
+                    warmup_tokens.add(0x06000000 | idx)
+            elif name in DECOY_FUNCTIONS:
+                decoy_names.add(name)
+
+        # Also inspect MemberRefs in case TrapKeyDecoy lives in an external assembly.
+        for idx in range(1, len(dotnet._memberrefs) + 1):
+            display = dotnet.resolve_token(0x0A000000 | idx)
+            if "TrapKeyDecoy::" not in display:
+                continue
+            member = display.rsplit("::", 1)[-1]
+            if member in ("Verify", "VerifySlice"):
+                verify_tokens.add(0x0A000000 | idx)
+            elif member == "ScheduleDelayedCheck":
+                delayed_tokens.add(0x0A000000 | idx)
+            elif member == "Warmup":
+                warmup_tokens.add(0x0A000000 | idx)
+
+        if not has_decoy_type and len(decoy_names) < 5 and not verify_tokens:
+            return None
+
+        check_points = 0
+        check_methods: set[int] = set()
+        delayed_called = False
+        warmed_up = False
+        scanned = 0
+        for idx, m in enumerate(dotnet.methods, start=1):
+            if idx in decoy_method_indices or not m["rva"] or scanned >= 4_000_000:
+                continue
+            body = dotnet.method_body(m["rva"])
+            if not body:
+                continue
+            scanned += len(body)
+            for tok in call_tokens(body):
+                if tok in verify_tokens:
+                    check_points += 1
+                    check_methods.add(idx)
+                elif tok in delayed_tokens:
+                    delayed_called = True
+                elif tok in warmup_tokens:
+                    warmed_up = True
+
+        return {
+            "active": True,
+            "kind": "dotnet",
+            "decoys": len(decoy_names),
+            "check_points": check_points,
+            "check_methods": len(check_methods),
+            "delayed": delayed_called,
+            "warmed_up": warmed_up,
+        }
+
+    # Native PE detection: TK_DECOY_V1 marker / exported or embedded decoy symbols.
+    has_marker = b"TK_DECOY_V1" in data or "trapkey_decoy" in joined
+    exports = set(ev.pe.exports()) if ev.pe else set()
+    export_blob = "\n".join(exports)
+    native_hits = {
+        fn for fn in DECOY_FUNCTIONS_NATIVE
+        if fn in joined or fn in export_blob
+    }
+    if not has_marker and len(native_hits) < 5:
+        return None
+    has_verify = "verify_slice" in joined or "verify_slice" in export_blob
+    has_delayed = "schedule_delayed_check" in joined or "schedule_delayed_check" in export_blob
+    return {
+        "active": True,
+        "kind": "native",
+        "decoys": len(native_hits) if native_hits else 8,
+        "check_points": 1 if has_verify else 0,
+        "check_methods": 1 if has_verify else 0,
+        "delayed": has_delayed,
+        "warmed_up": "warmup" in joined or "warmup" in export_blob,
+    }
 
 
 def _protection_markers(ev: Evidence, data: bytes) -> None:
@@ -344,3 +470,28 @@ def _findings(ev: Evidence, joined: str) -> None:
             "keep it; consider stronger anti-attach",
             severity="protection",
         )
+
+    decoy = ev.stats.get("decoy_kit")
+    if isinstance(decoy, dict) and decoy.get("active"):
+        decoys = int(decoy.get("decoys") or 0)
+        points = int(decoy.get("check_points") or 0)
+        delayed = bool(decoy.get("delayed"))
+        if decoys >= 5:
+            weight = -(10 + min(6, decoys - 5) + (4 if points >= 5 else 0) + (4 if delayed else 0))
+            parts = [f"{decoys} decoy function(s)", f"{points} multi-point check call(s)"]
+            if delayed:
+                parts.append("delayed async check")
+            ev.add(
+                "decoy-kit",
+                weight,
+                f"TrapKey Decoy Kit active ({', '.join(parts)})",
+                "keep decoys wired to startup and rotate BuildSeed per release",
+                severity="protection",
+            )
+        if decoy.get("kind") == "dotnet" and points < 5:
+            ev.add(
+                "decoy-weak-coverage",
+                8,
+                f"Decoy Kit has only {points} Verify() call site(s); a single-point gate is easy to patch",
+                "call TrapKeyDecoy.Verify(key, slice) at >=5 distinct places",
+            )

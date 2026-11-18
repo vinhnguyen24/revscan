@@ -292,6 +292,7 @@ def cmd_protect(args: argparse.Namespace) -> int:
             return 2
 
     blob = build_blob(data, args.level, payloads_bytes)
+    had_authenticode = pe.has_authenticode()
 
     # Strip before injecting: the debug directory offsets refer to the original
     # layout, and injection never moves existing sections.
@@ -343,6 +344,12 @@ def cmd_protect(args: argparse.Namespace) -> int:
     print("")
     print(f"AI crack   : ~{human_duration(before.best)} -> ~{human_duration(after.best)}")
     print(f"P(success) : {before.p_success} -> {after.p_success}")
+    if had_authenticode:
+        print(
+            "warning    : binary had an Authenticode signature; modifying the PE "
+            "invalidates it — re-sign with signtool before shipping",
+            file=sys.stderr,
+        )
     print("")
     print("note: the payload is data-only; program behaviour is unchanged.")
     print("      verify with your normal test suite before shipping.")

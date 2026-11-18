@@ -9,21 +9,25 @@ Cập nhật: 2026-11-18.
 
 ## 1. Sản phẩm là gì (và không là gì)
 
-**TrapKey đo một câu hỏi duy nhất:**
+**TrapKey trả lời một câu hỏi duy nhất:**
 
-> Một AI reverse-engineering agent (REA) mất bao nhiêu giây để tìm ra chỗ kiểm tra
-> license của app Windows này và viết keygen/patch?
+> Một AI reverse-engineering agent (REA) mất bao nhiêu giây để crack app Windows
+> này — và đây là bằng chứng: code bị lộ, patch cụ thể, mọi thứ.
 
-Sản phẩm: **scan → protect → monitor**.
+Sản phẩm: **scan → crack simulation → decoy kit → (optional) monitor**.
 
 | Có bán | Không bán |
 |---|---|
-| Scan + báo cáo crack-time | License server (commodity, chỉ là add-on) |
-| (sau này) payload feed + monitor | "Chống crack tuyệt đối" — không hứa được |
-| (sau này) protect v2 | CLI bán một lần (copy được, đã quyết định cho free) |
+| Crack simulation: show code bị lộ + patch bytes cụ thể | "Chống crack tuyệt đối" — không hứa được |
+| Decoy Kit (NuGet/header): fake functions + multi-point check | Obfuscator/VM (dùng ConfuserEx/VMProtect) |
+| Annual CI license + Audit Pass ($49 one-time) | License server (commodity, chỉ là add-on) |
+| CLI scan/protect miễn phí | Binary rewriter post-build (đã chứng minh không hiệu quả) |
 
 **Đừng định vị lại thành "key server".** Đã bàn và loại bỏ: Keygen.sh/Cryptolens
 thắng ở đó, và khách không trả tiền cho license verification.
+
+**Đừng bán subscription $29/tháng.** Nhu cầu scan là episodic (1–3 lần/quý), free
+tier quá đủ cho indie dev → churn >70%. Bán one-time audit + annual CI thay vì.
 
 ## 2. Trạng thái hiện tại (đã chạy thật)
 
@@ -31,16 +35,18 @@ thắng ở đó, và khách không trả tiền cho license verification.
 |---|---|
 | `scanner/` + `scan.py` | ✅ 34 test |
 | `calibrate.py` | ✅ 18 test |
-| `web/` (SaaS) | ✅ 45 test |
+| `web/` (SaaS) | ✅ 57 test (48 e2e + 9 UI/i18n) |
 | `server/` (license, add-on) | ✅ 16 test |
 | `cli/trapkey.py protect` | ✅ 15 test, chạy trên PE thật |
 | `cli/trapkey.py compare` | ✅ 29 test, protect → rescan → diff (+ `--ai`) |
 | `scanner/il.py` + `scanner/native.py` | ✅ 14 test, IL + objdump xref trong evidence pack |
 | `benchmark.py` | ✅ 46 test, ground-truth harness (static + AI) |
-| `sdk/cpp` + `sdk/dotnet` | ⚠️ viết xong, **chưa compile** (không có MSVC) |
+| `sdk/cpp` + `sdk/dotnet` | ⚠️ `TrapKeyDecoy.cs` đã compile & test thật (`csc.exe`); `sdk/cpp` chưa compile (không có MSVC) |
+| `Decoy Kit` (`TrapKeyDecoy.cs` + `trapkey_decoy.h` + scanner) | ✅ 4 test (compile + run + scan + compare trên `.exe` thật) |
 | `--ai` với model thật | ✅ Mặc định OpenCode Go `gpt-6-luna` (~2.5–4.6s/scan, $0.10/$0.50 per 1M, **k=1.2673**); `deepseek-v4.1-flash` mạnh hơn cho native; Gemini 3.1-lite/3.6/3.8 là fallback; native vẫn yếu |
+| `--ai` crack simulation (Round 2) | ✅ 20 test, Round 2 prompt + verify patch + report render |
 
-Tổng: **217 test pass**, 0 dependency npm (objdump là optional, không phải dependency).
+Tổng: **256 test pass** (183 Python + 73 JS trên Node 22+), 0 dependency npm (objdump là optional, không phải dependency).
 
 ## 3. Bản đồ code
 
@@ -88,7 +94,7 @@ npm test                                   # 217 test (scan + calibrate + protec
 python3 scan.py App.exe                    # báo cáo
 python3 scan.py App.exe --json             # cho web/CI
 python3 scan.py dist/*.exe --min-seconds 60  # CI gate, exit 1 nếu dưới ngưỡng
-python3 scan.py App.exe --ai               # đo thật (cần provider)
+python3 scan.py App.exe --ai               # đo thật + crack simulation (cần provider)
 
 python3 calibrate.py <dir> --limit 20
 TRAPKEY_AI_PROVIDER=ollama python3 calibrate.py <dir> --ai --limit 10
@@ -128,8 +134,11 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
 | Per-product keypair | Rotate 1 vendor không ảnh hưởng vendor khác |
 | HWID = sha256(MachineGuid + ":" + productId) | Cùng máy ra ID khác nhau cho từng product |
 | `protect` 3 chiến lược chèn | `mscorlib.dll` hết chỗ header → phải có overlay fallback |
-| CLI protect = free/open | Mua 1 lần rồi copy được; bán payload feed + benchmark thay vì bán CLI |
-| Scan là sản phẩm chính | Dev quan tâm "bị bẻ trong bao lâu", không quan tâm key verify |
+| CLI protect = free/open | Mua 1 lần rồi copy được; bán audit pass + decoy kit thay vì bán CLI |
+| Scan + crack simulation là sản phẩm chính | Dev quan tâm "bị bẻ trong bao lâu" + muốn thấy bằng chứng (patch bytes) |
+| One-time audit, không subscription | Nhu cầu episodic (1–3 lần/quý), subscription churn >70% |
+| Dừng protect v2 runtime reference | Binary rewriting quá phức tạp + AV false positive; Decoy Kit source-level thay thế |
+| Dừng prompt injection payload feed | Frontier model miễn nhiễm; fake code functions hiệu quả hơn fake data |
 | SQLite (`node:sqlite`) | Có tiền trong dữ liệu → cần transaction, không dùng JSON store |
 | Magic link, không mật khẩu | Ít bề mặt tấn công, không cần reset flow |
 
@@ -139,7 +148,7 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
 |---|---|
 | `PORT` `HOST` `DATA_DIR` `PUBLIC_URL` `TRAPKEY_TLS` | web |
 | `ADMIN_KEY` | admin (mặc định sinh vào `DATA_DIR/admin.key`) |
-| `STRIPE_SECRET_KEY` `STRIPE_WEBHOOK_SECRET` `STRIPE_PRICE_PRO/TEAM` | billing thật |
+| `STRIPE_SECRET_KEY` `STRIPE_WEBHOOK_SECRET` `STRIPE_PRICE_AUDIT/ANNUAL` | billing thật |
 | `RESEND_API_KEY` `MAIL_FROM` | email (không có → outbox file) |
 | `TRAPKEY_AI_PROVIDER` = `openai`\|`ollama`\|`anthropic`\|`gemini` | `--ai` |
 | `OLLAMA_API_KEY` | Ollama Cloud (`https://ollama.com/v1`), không cần cài Ollama |
@@ -267,33 +276,48 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
 
 ## 9. Việc đang mở (ưu tiên từ trên xuống)
 
-1. **Re-fit `k`**: đã fit cho default `gpt-6-luna` (OpenCode Go) — **k=1.2673**,
+1. **P0 — Crack Simulation (Round 2 AI)**: ✅ Done (prompt, verify, report, scan.py, `views.js` free/paid tiering).
+   Chi phí thêm ~$0.0002/scan. Xem `docs/ROADMAP.md`.
+2. **P0 — Pricing pivot**: ✅ Done (`config.js` Free / Audit Pass $49 / Annual CI $199,
+   `credits.js` one-time expiry + unlimited static, `server.js` checkout `mode=payment`,
+   `views.js` pricing + free report redaction + UI high-tech + i18n `vi`/`en`).
+3. **P1 — Decoy Kit**: ✅ Done (`sdk/dotnet/TrapKeyDecoy.cs` + `sdk/cpp/trapkey_decoy.h` +
+   `evidence.py`/`estimate.py` decoy coverage & multi-point IL call detection + `test_decoy_kit.py`).
+4. **P2 — Triển khai**: VPS + systemd + nginx + certbot + Stripe ($49 Audit Pass) + Resend.
+5. **P2 — Fix bugs**: ✅ Done (`BCryptVerifySignature` `BCRYPT_PKCS1_PADDING_INFO` + `JsonEscape` trong `sdk/cpp/trapkey.cpp`, Authenticode warning trong `pe.py`/`trapkey.py`, privacy statement trong `views.js`). *(C++ SDK vẫn chưa compile thử trên MSVC.)*
+6. **Re-fit `k`**: đã fit cho default `gpt-6-luna` (OpenCode Go) — **k=1.2673**,
    n=7, spread 2.27x, corpus 7 DLL licensing NuGet + System.Core/Security + WinRAR
    (2026-11-16). DeepSeek V4.1 Flash chưa fit được vì 1200 token bị reasoning ăn hết;
    nếu đổi sang DeepSeek phải đặt `TRAPKEY_AI_MAX_TOKENS=4000` rồi chạy lại
    `calibrate.py --ai --repeat 3`, xem `docs/CALIBRATION.md` §8.
-2. **Calibrate thêm**: corpus run 4 có 8/11 là .NET (7 DLL licensing NuGet + System.Core/Security);
-   chỉ WinRAR/notepad native, và cả hai trả `none`. Cần thêm 5–6 shareware native thật
-   (Total Commander, Beyond Compare, EmEditor…) dạng portable/zip để fit `k` cho native.
-3. **Protect v2 còn lại**: runtime reference (stub giải mã code gọi tới) và payload feed
-   server (endpoint + rotate + revoke). Phần strip/encrypt/decoy/chữ ký đã xong.
-   Case study `docs/CASE_STUDY_2026-11-16_compare_ai.md`: data-only làm static +12.8s
-   nhưng measured **-1.19s**, agent vẫn tìm ra check → runtime reference là bắt buộc.
-4. **Triển khai**: VPS + systemd + nginx + certbot. Files đã có ở `deploy/`; commit
-   cần user xác nhận.
-5. **Stripe/Resend**: điền env, test webhook idempotency thật.
-6. **SDK C++**: build trên Windows, sửa warning, thêm CI `windows-latest`.
+7. **Calibrate thêm**: corpus run 4 có 8/11 là .NET; chỉ WinRAR/notepad native.
+   Cần thêm 5–6 shareware native thật cho fit `k` native.
+8. **SDK C++**: build trên Windows, sửa bugs, thêm CI `windows-latest`.
 
-## 10. Định vị & giá (đã chốt hướng, có thể chỉnh số)
+**Đã loại bỏ khỏi roadmap:**
+- ~~Protect v2 runtime reference~~ — binary rewriting post-build quá phức tạp,
+  case study chứng minh data-only payload không hiệu quả, AV false positive risk.
+  Thay bằng Decoy Kit source-level.
+- ~~Payload feed server~~ — prompt injection bị frontier model miễn nhiễm.
+- ~~Monthly subscription $29~~ — churn >70% cho diagnostic tool episodic.
 
-| Gói | Giá | static | ai |
+## 10. Định vị & giá (pivot 2026-11-18)
+
+> Đổi từ subscription sang one-time + annual. Lý do: scan là nhu cầu episodic
+> (1–3 lần/quý), subscription $29/tháng bị churn >70% ở tháng 2.
+
+| Gói | Giá | static | ai (crack sim) |
 |---|---|---|---|
-| Free | $0 | 5/tháng | 1/tháng |
-| Pro | $29/tháng | 200 | 25 |
-| Team | $99/tháng | 2000 | 100 (5 seats) |
+| Free | $0 | 5/tháng | 3/tháng (giấu patch bytes) |
 | Anonymous | — | 1/ngày/IP | — |
+| Audit Pass | **$49 mua đứt** | 10 | 3 (full report + Decoy Kit) |
+| Annual CI | **$199/năm** | unlimited | 50/năm + CI badge |
+| Consulting | **$500–2,000/lần** | — | Custom report + tư vấn |
 
-Chi phí AI ~$0.002–0.01/scan → biên gần như toàn phần. Anonymous scan là marketing.
+Chi phí AI ~$0.0005/scan (2 round gpt-6-luna) → biên gần như toàn phần.
+Anonymous scan là marketing. Free tier giấu patch bytes + giấu fix → incentive mua.
+
+**Giá cũ (đã bỏ):** ~~Pro $29/tháng, Team $99/tháng~~ — churn quá cao cho diagnostic tool.
 
 ## 11. Cách viết code trong repo này
 

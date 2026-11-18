@@ -3,7 +3,15 @@
 const config = require('./config');
 const { ledger, now, tx } = require('./db');
 
-const PERIOD_MS = 30 * 86_400_000;
+const DAY_MS = 86_400_000;
+
+function planFor(account) {
+  return (account && config.plans[account.plan]) || config.plans.free;
+}
+
+function isPaidAccount(account) {
+  return Boolean(account && planFor(account).fullReport);
+}
 
 function bucketFor(mode) {
   return mode === 'ai' ? 'ai' : 'static';
@@ -13,10 +21,29 @@ function creditField(mode) {
   return mode === 'ai' ? 'credits_ai' : 'credits_static';
 }
 
-/** Monthly reset. Runs on every authenticated request; cheap and idempotent. */
+/**
+ * Period maintenance on authenticated requests:
+ * - Recurring plans (`free` 30d, `annual` 365d) reset credits when their period elapses.
+ * - One-time plans (`audit` 30d) never auto-renew; once expired they revert to `free`.
+ */
 function refreshPeriod(db, account) {
-  if (!account || now() - account.period_start < PERIOD_MS) return account;
-  const plan = config.plans[account.plan] || config.plans.free;
+  if (!account) return account;
+  const plan = planFor(account);
+  const periodMs = (plan.periodDays || 30) * DAY_MS;
+  if (now() - account.period_start < periodMs) return account;
+
+  if (plan.oneTime) {
+    const fallback = config.plans.free;
+    return tx(db, () => {
+      db.prepare(
+        'UPDATE accounts SET plan = ?, credits_static = ?, credits_ai = ?, period_start = ? WHERE id = ?'
+      ).run(fallback.id, fallback.staticCredits, fallback.aiCredits, now(), account.id);
+      ledger(db, account.id, fallback.staticCredits, 'static', `${plan.id} expired`, null);
+      ledger(db, account.id, fallback.aiCredits, 'ai', `${plan.id} expired`, null);
+      return db.prepare('SELECT * FROM accounts WHERE id = ?').get(account.id);
+    });
+  }
+
   return tx(db, () => {
     db.prepare(
       'UPDATE accounts SET credits_static = ?, credits_ai = ?, period_start = ? WHERE id = ?'
@@ -28,10 +55,14 @@ function refreshPeriod(db, account) {
 }
 
 function remaining(account, mode) {
+  if (mode !== 'ai' && planFor(account).unlimitedStatic) return Infinity;
   return Number(account[creditField(mode)] || 0);
 }
 
 function spend(db, account, mode, ref) {
+  if (mode !== 'ai' && planFor(account).unlimitedStatic) {
+    return { ok: true, unlimited: true };
+  }
   const field = creditField(mode);
   const bucket = bucketFor(mode);
   return tx(db, () => {
@@ -44,6 +75,7 @@ function spend(db, account, mode, ref) {
 }
 
 function refund(db, account, mode, ref, reason = 'scan failed') {
+  if (mode !== 'ai' && planFor(account).unlimitedStatic) return;
   const field = creditField(mode);
   const bucket = bucketFor(mode);
   return tx(db, () => {
@@ -103,6 +135,8 @@ function applyPlan(db, account, planId) {
 }
 
 module.exports = {
+  planFor,
+  isPaidAccount,
   refreshPeriod,
   remaining,
   spend,

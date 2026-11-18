@@ -108,6 +108,11 @@ class PE:
     def has_payload_marker(self) -> bool:
         return b"\0TK1\0" in self.data or b"\0TK2\0" in self.data
 
+    def has_authenticode(self) -> bool:
+        """True if IMAGE_DIRECTORY_ENTRY_SECURITY (index 4) carries a signature."""
+        entry = self.dir_entry(4)
+        return bool(entry and entry[0] and entry[1])
+
     def rva_to_offset(self, rva: int) -> int | None:
         for section in self.sections:
             span = max(section["vsize"], section["rawsize"])

@@ -61,6 +61,8 @@ def to_dict(ev: Evidence, est: Estimate) -> dict:
     }
     if est.measured:
         out["measured"] = est.measured
+    if est.crack_simulation:
+        out["crack_simulation"] = est.crack_simulation
     return out
 
 
@@ -132,6 +134,28 @@ def render(ev: Evidence, est: Estimate) -> str:
             if n == 3:
                 break
         lines.append("")
+
+    # Crack simulation (Round 2 AI)
+    if est.crack_simulation:
+        cs = est.crack_simulation
+        if cs.get("success") and cs.get("patch"):
+            p = cs["patch"]
+            lines.append(f"⚡ CRACK SIMULATION — {cs.get('model', '?')}, {cs.get('seconds', 0):.1f}s")
+            lines.append(f"  Strategy: {p.get('strategy', '?')}   Difficulty: {p.get('difficulty', '?')} ({p.get('patch_size', '?')} byte{'s' if p.get('patch_size', 1) != 1 else ''})")
+            if p.get("method"):
+                lines.append(f"  Method: {p['method']}")
+            lines.append(f"  Offset 0x{p.get('offset', 0):04x}: {p.get('original', '??')} → {p.get('patched', '??')}")
+            if p.get("explanation"):
+                lines.append(f"  ⚠️  {p['explanation']}")
+            if not p.get("verified"):
+                lines.append("  ❌ Patch NOT verified against the actual binary")
+            lines.append("")
+        elif cs.get("error"):
+            lines.append(f"⚡ CRACK SIMULATION — error: {cs['error']}")
+            lines.append("")
+        else:
+            lines.append(f"⚡ CRACK SIMULATION — {cs.get('model', '?')}: could not propose a patch")
+            lines.append("")
 
     lines.append("This is a cost model, not a measurement. Calibrate with: calibrate.py --ai <dir>")
     lines.append("Expect ±2x until you have calibrated on your own binaries (docs/CALIBRATION.md).")

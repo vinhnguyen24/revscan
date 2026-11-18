@@ -6,12 +6,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+function loadDotEnv(file = path.join(__dirname, '..', '.env')) {
+  if (!fs.existsSync(file)) return;
+  for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || !line.includes('=')) continue;
+    const eq = line.indexOf('=');
+    const key = line.slice(0, eq).trim();
+    const val = line.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (key && val && process.env[key] === undefined) {
+      process.env[key] = val;
+    }
+  }
+}
+
+// Load root .env before requiring config.js when running as the standalone server.
+if (require.main === module) loadDotEnv();
+
 const config = require('./config');
+const demo = require('./demo');
 const dbModule = require('./db');
 const auth = require('./auth');
 const credits = require('./credits');
 const { runEngine, runCompareReports, receiveUpload, sha256File } = require('./scanjob');
 const views = require('./views');
+const i18n = require('./i18n');
 
 const { open, tx, id, now, ledger, event, cleanup: cleanupDb } = dbModule;
 
@@ -199,7 +218,7 @@ async function createCheckout(account, planId) {
     };
   }
   const body = new URLSearchParams({
-    mode: 'subscription',
+    mode: plan.oneTime ? 'payment' : 'subscription',
     'line_items[0][price]': process.env[`STRIPE_PRICE_${planId.toUpperCase()}`] || '',
     'line_items[0][quantity]': '1',
     customer_email: account.email,
@@ -207,14 +226,18 @@ async function createCheckout(account, planId) {
     success_url: `${config.publicUrl}/app?upgraded=1`,
     cancel_url: `${config.publicUrl}/pricing`,
     // The webhook cannot see line items unless the session is expanded, and it
-    // must not guess: without this every subscription (including Team) became
-    // Pro. subscription_data copies the fields onto the subscription itself so
-    // later cancellation events can find the account too.
+    // must not guess: without this every subscription (including Annual CI)
+    // became the default plan.
     'metadata[plan]': plan.id,
     'metadata[account_id]': account.id,
-    'subscription_data[metadata][plan]': plan.id,
-    'subscription_data[metadata][account_id]': account.id,
   });
+  if (!plan.oneTime) {
+    // Stripe rejects subscription_data when mode=payment (one-time Audit Pass).
+    // For recurring subscriptions, copy metadata onto the subscription so
+    // later cancellation events can find the account too.
+    body.set('subscription_data[metadata][plan]', plan.id);
+    body.set('subscription_data[metadata][account_id]', account.id);
+  }
   if (!body.get('line_items[0][price]')) {
     throw Object.assign(new Error('missing STRIPE_PRICE_' + planId.toUpperCase()), { code: 'CONFIG' });
   }
@@ -232,9 +255,9 @@ async function createCheckout(account, planId) {
 function planFromSession(session) {
   const candidate = String(session?.metadata?.plan || '');
   if (candidate && candidate !== 'free' && config.plans[candidate]) return candidate;
-  // Sessions created before metadata was added: Pro is the safer default than
-  // granting Team, which is the most expensive plan.
-  return 'pro';
+  // Sessions without metadata: Audit Pass is the safer default than granting
+  // Annual CI, which is the most expensive plan.
+  return 'audit';
 }
 
 function accountForSubscription(db, subscription) {
@@ -405,7 +428,45 @@ function createServer(options = {}) {
 
   /* ------------------------------ public ------------------------------ */
 
-  route('GET', /^\/$/, (ctx) => html(ctx.res, views.landing()));
+  route('GET', /^\/lang\/([a-z]{2})$/, (ctx, params) => {
+    const code = String(params[0] || '').toLowerCase();
+    if (!i18n.SUPPORTED.has(code)) {
+      return html(ctx.res, views.notFound({ lang: ctx.lang, currentPath: ctx.currentPath }), 404);
+    }
+    const lang = i18n.normalizeLang(code);
+    const rawNext = String(ctx.url.searchParams.get('next') || '/');
+    const safeNext = rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.includes('\\') ? rawNext : '/';
+    const attrs = [`tk_lang=${lang}`, 'Path=/', 'SameSite=Lax', 'Max-Age=31536000'];
+    if (config.tls) attrs.push('Secure');
+    redirect(ctx.res, safeNext, [attrs.join('; ')]);
+  });
+
+  route('GET', /^\/$/, (ctx) => html(ctx.res, views.landing({ lang: ctx.lang, currentPath: ctx.currentPath })));
+
+  route('GET', /^\/demo$/, async (ctx) => {
+    const sample = String(ctx.url.searchParams.get('sample') || 'dotnet').toLowerCase();
+    let compareResult = null;
+    if (sample === 'compare') {
+      try {
+        compareResult = await runReportComparison(
+          demo.getSample('dotnet', ctx.lang),
+          demo.getSample('protected', ctx.lang)
+        );
+      } catch {
+        compareResult = demo.getCompareFallback(ctx.lang);
+      }
+    }
+    html(
+      ctx.res,
+      views.demoPage({
+        sample,
+        compareResult,
+        account: ctx.account,
+        lang: ctx.lang,
+        currentPath: ctx.currentPath,
+      })
+    );
+  });
 
   route('GET', /^\/scan$/, (ctx) => {
     const ipHash = auth.hash(clientIp(ctx.req));
@@ -422,18 +483,43 @@ function createServer(options = {}) {
         // not cooling down; showing "chưa cấu hình model" would be a lie.
         aiAvailable: config.aiAvailable() && !aiCoolingDown(),
         aiCooldownSeconds: cooldown,
+        lang: ctx.lang,
+        currentPath: ctx.currentPath,
       })
     );
   });
 
-  route('GET', /^\/compare$/, (ctx) => {
-    html(ctx.res, views.comparePage({}));
+  route('GET', /^\/compare$/, async (ctx) => {
+    if (ctx.url.searchParams.get('demo') === '1') {
+      const orig = demo.getSample('dotnet', ctx.lang);
+      const prot = demo.getSample('protected', ctx.lang);
+      const originalText = JSON.stringify(orig, null, 2);
+      const protectedText = JSON.stringify(prot, null, 2);
+      let result = null;
+      try {
+        result = await runReportComparison(orig, prot);
+      } catch {
+        result = demo.getCompareFallback(ctx.lang);
+      }
+      return html(
+        ctx.res,
+        views.comparePage({
+          result,
+          originalText,
+          protectedText,
+          account: ctx.account,
+          lang: ctx.lang,
+          currentPath: ctx.currentPath,
+        })
+      );
+    }
+    html(ctx.res, views.comparePage({ account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }));
   });
 
   route('POST', /^\/compare$/, async (ctx) => {
     const ipHash = auth.hash(clientIp(ctx.req));
     if (!allow(`compare:${ipHash}`, config.rate.comparesPerHour, 3_600_000)) {
-      return html(ctx.res, views.comparePage({ error: 'Quá nhiều lần so sánh, thử lại sau.' }), 429);
+      return html(ctx.res, views.comparePage({ error: 'Quá nhiều lần so sánh, thử lại sau.', account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }), 429);
     }
 
     const form = await readForm(ctx.req, 512 * 1024);
@@ -447,6 +533,9 @@ function createServer(options = {}) {
           error: 'Cần cả báo cáo trước và sau (JSON từ scan.py --json).',
           originalText: keep(originalText),
           protectedText: keep(protectedText),
+          account: ctx.account,
+          lang: ctx.lang,
+          currentPath: ctx.currentPath,
         }),
         400
       );
@@ -458,22 +547,22 @@ function createServer(options = {}) {
       original = JSON.parse(originalText);
       protectedReport = JSON.parse(protectedText);
       const result = await runReportComparison(original, protectedReport);
-      return html(ctx.res, views.comparePage({ result }));
+      return html(ctx.res, views.comparePage({ result, account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }));
     } catch (err) {
       if (err.code === 'BUSY') {
-        return html(ctx.res, views.comparePage({ error: 'Server đang bận, thử lại sau vài giây.' }), 503);
+        return html(ctx.res, views.comparePage({ error: 'Server đang bận, thử lại sau vài giây.', account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }), 503);
       }
       if (err.code === 'TIMEOUT') {
         return html(
           ctx.res,
-          views.comparePage({ error: 'So sánh quá lâu, thử lại sau. Báo cáo vẫn hợp lệ.' }),
+          views.comparePage({ error: 'So sánh quá lâu, thử lại sau. Báo cáo vẫn hợp lệ.', account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }),
           504
         );
       }
       if (err.code === 'OUTPUT') {
         return html(
           ctx.res,
-          views.comparePage({ error: 'Báo cáo quá lớn để xử lý.' }),
+          views.comparePage({ error: 'Báo cáo quá lớn để xử lý.', account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }),
           502
         );
       }
@@ -485,6 +574,9 @@ function createServer(options = {}) {
             error: 'Báo cáo JSON không hợp lệ. Dùng đúng output của scan.py --json.',
             originalText: keep(originalText),
             protectedText: keep(protectedText),
+            account: ctx.account,
+            lang: ctx.lang,
+            currentPath: ctx.currentPath,
           }),
           400
         );
@@ -538,8 +630,12 @@ function createServer(options = {}) {
     }
   });
 
-  route('GET', /^\/pricing$/, (ctx) => html(ctx.res, views.pricingPage({ account: ctx.account })));
-  route('GET', /^\/legal\/privacy$/, (ctx) => html(ctx.res, views.privacyPage()));
+  route('GET', /^\/pricing$/, (ctx) =>
+    html(ctx.res, views.pricingPage({ account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }))
+  );
+  route('GET', /^\/legal\/privacy$/, (ctx) =>
+    html(ctx.res, views.privacyPage({ account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }))
+  );
 
   route('GET', /^\/docs\/calibration$/, (ctx) => {
     const file = path.join(config.root, 'docs', 'CALIBRATION.md');
@@ -548,6 +644,9 @@ function createServer(options = {}) {
       ctx.res,
       views.layout({
         title: 'Calibration',
+        account: ctx.account,
+        lang: ctx.lang,
+        currentPath: ctx.currentPath,
         body: `<section class="panel prose"><h1>Calibration</h1><pre>${views.esc(text)}</pre></section>`,
       })
     );
@@ -600,7 +699,13 @@ function createServer(options = {}) {
 
   route('GET', /^\/auth\/verify$/, (ctx) => {
     const email = auth.consumeMagicLink(db, ctx.url.searchParams.get('token'));
-    if (!email) return html(ctx.res, views.errorPage('Link không hợp lệ hoặc đã hết hạn.'), 400);
+    if (!email) {
+      return html(
+        ctx.res,
+        views.errorPage('Link không hợp lệ hoặc đã hết hạn.', { lang: ctx.lang, currentPath: ctx.currentPath }),
+        400
+      );
+    }
     const account = auth.ensureAccount(db, email);
     const session = auth.createSession(db, account.id);
     event(db, 'login', account.id, { email });
@@ -617,7 +722,9 @@ function createServer(options = {}) {
       ctx.res,
       views.loginPage({
         sent: ctx.url.searchParams.get('sent') === '1',
-        error: ctx.url.searchParams.get('error') === 'rate' ? 'Quá nhiều yêu cầu, thử lại sau.' : null,
+        error: ctx.url.searchParams.get('error') === 'rate' ? i18n.t(ctx.lang, 'loginRateError') : null,
+        lang: ctx.lang,
+        currentPath: ctx.currentPath,
       })
     );
   });
@@ -632,7 +739,7 @@ function createServer(options = {}) {
       const scans = db
         .prepare('SELECT * FROM scans WHERE account_id=? ORDER BY created_at DESC LIMIT 30')
         .all(ctx.account.id);
-      html(ctx.res, views.dashboard({ account: ctx.account, scans }));
+      html(ctx.res, views.dashboard({ account: ctx.account, scans, lang: ctx.lang, currentPath: ctx.currentPath }));
     },
     { auth: true }
   );
@@ -643,18 +750,23 @@ function createServer(options = {}) {
     (ctx, params) => {
       if (!ctx.account) return redirect(ctx.res, '/login');
       const scan = db.prepare('SELECT * FROM scans WHERE id=? AND account_id=?').get(params[0], ctx.account.id);
-      if (!scan) return html(ctx.res, views.notFound(), 404);
+      if (!scan) return html(ctx.res, views.notFound({ account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }), 404);
       const report = JSON.parse(scan.report_json);
+      const isPaid = credits.isPaidAccount(ctx.account);
       html(
         ctx.res,
         views.layout({
           title: 'Report',
           account: ctx.account,
           active: 'app',
+          lang: ctx.lang,
+          currentPath: ctx.currentPath,
           body: views.reportView(report, {
-            full: true,
+            full: isPaid,
+            authenticated: true,
             filename: scan.filename,
             shareUrl: `${config.publicUrl}/r/${scan.public_id}`,
+            lang: ctx.lang,
           }),
         })
       );
@@ -667,7 +779,7 @@ function createServer(options = {}) {
     /^\/app\/settings$/,
     (ctx) => {
       if (!ctx.account) return redirect(ctx.res, '/login');
-      html(ctx.res, views.settingsPage({ account: ctx.account }));
+      html(ctx.res, views.settingsPage({ account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }));
     },
     { auth: true }
   );
@@ -726,6 +838,8 @@ function createServer(options = {}) {
       accounts,
       scans: recent,
       stats: { accounts: accountCount, scans, scans24h, aiScans, cacheHits },
+      lang: ctx.lang,
+      currentPath: ctx.currentPath,
     });
     // This page lists customer emails and recent scan ids; never let a proxy
     // or browser serve a stale copy.
@@ -742,7 +856,15 @@ function createServer(options = {}) {
       if (!ctx.account) return redirect(ctx.res, '/login');
       const { token } = auth.rotateApiToken(db, ctx.account.id);
       event(db, 'api_token_rotated', ctx.account.id, {});
-      html(ctx.res, views.settingsPage({ account: ctx.account, apiTokenHint: token }));
+      html(
+        ctx.res,
+        views.settingsPage({
+          account: ctx.account,
+          apiTokenHint: token,
+          lang: ctx.lang,
+          currentPath: ctx.currentPath,
+        })
+      );
     },
     { auth: true }
   );
@@ -852,12 +974,14 @@ function createServer(options = {}) {
           // Audit trail for the admin "cache hits" stat. Without an event the
           // only signal was `credits_used = 0`, which anonymous scans share.
           event(db, 'cache_hit', ctx.account.id, { sha256, mode, scan_id: cached.id });
+          const cachedReport = JSON.parse(cached.report_json);
+          const isPaid = credits.isPaidAccount(ctx.account);
           return ok(ctx.res, {
             id: cached.id,
             url: `/app/scan/${cached.id}`,
             publicId: cached.public_id,
             cached: true,
-            report: JSON.parse(cached.report_json),
+            report: isPaid ? cachedReport : views.summaryReport(cachedReport),
           });
         }
       }
@@ -937,13 +1061,14 @@ function createServer(options = {}) {
       );
       committed = true;
 
+      const isPaid = credits.isPaidAccount(ctx.account);
       return ok(ctx.res, {
         id: scanId,
         publicId,
         url: ctx.account ? `/app/scan/${scanId}` : `/r/${publicId}`,
         cached: false,
-        // Anonymous uploaders get the summary; the owner gets everything.
-        report: ctx.account ? report : views.summaryReport(report),
+        // Paid plans get the full report + patch bytes; free and anonymous get the summary.
+        report: isPaid ? report : views.summaryReport(report),
       });
     } finally {
       if (upload) upload.cleanup();
@@ -955,16 +1080,19 @@ function createServer(options = {}) {
 
   route('GET', /^\/r\/([a-f0-9]+)$/, (ctx, params) => {
     const scan = db.prepare('SELECT * FROM scans WHERE public_id=?').get(params[0]);
-    if (!scan) return html(ctx.res, views.notFound(), 404);
+    if (!scan) return html(ctx.res, views.notFound({ account: ctx.account, lang: ctx.lang, currentPath: ctx.currentPath }), 404);
     const isOwner = ctx.account && scan.account_id === ctx.account.id;
+    const isPaid = isOwner && credits.isPaidAccount(ctx.account);
     const report = JSON.parse(scan.report_json);
     const body = views.reportView(report, {
-      full: !!isOwner,
+      full: isPaid,
+      authenticated: Boolean(ctx.account),
       filename: views.redact(scan.filename),
+      lang: ctx.lang,
     });
     html(
       ctx.res,
-      views.layout({ title: 'Report', body, account: ctx.account, active: 'scan' })
+      views.layout({ title: 'Report', body, account: ctx.account, active: 'scan', lang: ctx.lang, currentPath: ctx.currentPath })
     );
   });
 
@@ -992,7 +1120,12 @@ function createServer(options = {}) {
       if (!ctx.account) return fail(ctx.res, 401, 'UNAUTHORIZED', 'login required');
       const scan = db.prepare('SELECT * FROM scans WHERE id=? AND account_id=?').get(params[0], ctx.account.id);
       if (!scan) return fail(ctx.res, 404, 'NOT_FOUND', 'no such scan');
-      ok(ctx.res, { scan: { ...scan, report_json: undefined }, report: JSON.parse(scan.report_json) });
+      const raw = JSON.parse(scan.report_json);
+      const isPaid = credits.isPaidAccount(ctx.account);
+      ok(ctx.res, {
+        scan: { ...scan, report_json: undefined },
+        report: isPaid ? raw : views.summaryReport(raw),
+      });
     },
     { auth: true }
   );
@@ -1118,6 +1251,7 @@ function createServer(options = {}) {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname.replace(/\/+$/, '') || '/';
+    const lang = i18n.langFromRequest(url, req.headers.cookie, auth.parseCookies);
 
     try {
       if (!allow(`req:${auth.hash(clientIp(req))}`, config.rate.requestsPerMinute, 60_000)) {
@@ -1135,7 +1269,7 @@ function createServer(options = {}) {
       if (!matched.length) {
         return pathname.startsWith('/api/')
           ? fail(res, 404, 'NOT_FOUND', 'no such route')
-          : html(res, views.notFound(), 404);
+          : html(res, views.notFound({ lang, currentPath: pathname }), 404);
       }
       const { route: r, params } = matched[0];
 
@@ -1143,7 +1277,7 @@ function createServer(options = {}) {
       if (!account) account = auth.accountFromApiToken(db, req.headers.authorization);
       if (account) account = credits.refreshPeriod(db, account);
 
-      const ctx = { req, res, url, account };
+      const ctx = { req, res, url, account, lang, currentPath: pathname };
       return await r.handler(ctx, params.map(decodeURIComponent));
     } catch (err) {
       if (err.code === 'TOO_LARGE') {
@@ -1169,7 +1303,9 @@ function createServer(options = {}) {
       }
       console.error('[trapkey-web]', err);
       if (res.headersSent) return res.end();
-      return pathname.startsWith('/api/') ? fail(res, 500, 'INTERNAL', 'internal error') : html(res, views.errorPage('Lỗi hệ thống.'), 500);
+      return pathname.startsWith('/api/')
+        ? fail(res, 500, 'INTERNAL', 'internal error')
+        : html(res, views.errorPage(lang === 'en' ? 'Internal error.' : 'Lỗi hệ thống.', { lang, currentPath: pathname }), 500);
     }
   });
 

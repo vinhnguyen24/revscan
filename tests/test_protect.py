@@ -208,5 +208,36 @@ class SignedBundleTests(unittest.TestCase):
                 os.environ["TRAPKEY_PAYLOAD_PUBKEY"] = saved
 
 
+@unittest.skipUnless(os.path.exists(NOTEPAD), "no Windows binary")
+class AuthenticodeWarningTests(unittest.TestCase):
+    def test_warns_when_protecting_authenticode_signed_pe(self):
+        import struct
+
+        tmp = Path(tempfile.mkdtemp(prefix="trapkey-auth-"))
+        try:
+            src = tmp / "signed.exe"
+            out = tmp / "signed.protected.exe"
+            raw = bytearray(Path(NOTEPAD).read_bytes())
+            pe = PE(raw)
+            # Ensure data directory entry 4 (SECURITY) is non-zero to simulate a signed binary.
+            sec_off = pe.data_dir + 4 * 8
+            if pe.num_dirs > 4 and sec_off + 8 <= len(raw):
+                struct.pack_into("<II", raw, sec_off, len(raw), 64)
+                raw.extend(b"\0" * 64)
+            src.write_bytes(raw)
+
+            self.assertTrue(PE(src.read_bytes()).has_authenticode())
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "cli" / "trapkey.py"), "protect", str(src), "--out", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("Authenticode", proc.stderr)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

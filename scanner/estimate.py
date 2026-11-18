@@ -52,6 +52,9 @@ class Estimate:
     # of `seconds` on purpose — it is measured differently from the model bands
     # (no tool time, one round) and must never be mistaken for the estimate.
     measured: dict | None = None
+    # Populated by `scan.py --ai` Round 2: crack simulation result with
+    # strategy, patch bytes, verification, and difficulty.
+    crack_simulation: dict | None = None
     calibration_k: float = 1.0
     calibration_model: str | None = None
 
@@ -173,6 +176,27 @@ def estimate(ev: Evidence) -> Estimate:
         breakdown.append("AI deception payloads: the agent must notice it is being lied to")
     if ev.kind == "dotnet" and not ev.obfuscated_names:
         p = min(0.99, p + 0.05)
+
+    decoy = ev.stats.get("decoy_kit") if isinstance(ev.stats, dict) else None
+    if isinstance(decoy, dict) and decoy.get("active"):
+        decoys = int(decoy.get("decoys") or 0)
+        points = int(decoy.get("check_points") or 0)
+        delayed = bool(decoy.get("delayed"))
+        if decoys > 0:
+            budget *= 1.0 + min(1.6, decoys * 0.15)
+            rounds += min(2.4, decoys * 0.3)
+        if points >= 2:
+            rounds += min(2.0, points * 0.35)
+            p -= min(0.18, points * 0.03)
+        if delayed:
+            rounds += 0.6
+            p -= 0.08
+        details = [f"{decoys} decoys", f"{points} check point(s)"]
+        if delayed:
+            details.append("delayed check")
+        breakdown.append(
+            f"Decoy Kit ({', '.join(details)}): agent must triage decoys and patch multiple call sites"
+        )
 
     budget = int(budget)
     p = max(0.02, min(0.99, p))

@@ -9,11 +9,14 @@ const ROOT = path.resolve(__dirname, '..');
 
 const suites = [
   [py, [path.join(ROOT, 'tests', 'test_scan.py')]],
+  [py, [path.join(ROOT, 'tests', 'test_crack_sim.py')]],
+  [py, [path.join(ROOT, 'tests', 'test_decoy_kit.py')]],
   [py, [path.join(ROOT, 'tests', 'test_calibrate.py')]],
   [py, [path.join(ROOT, 'tests', 'test_protect.py')]],
   [py, [path.join(ROOT, 'tests', 'test_compare.py')]],
   [py, [path.join(ROOT, 'tests', 'test_disasm.py')]],
   [py, [path.join(ROOT, 'tests', 'test_benchmark.py')]],
+  [node, [path.join(ROOT, 'tests', 'test_web_views.js')]],
   [node, [path.join(ROOT, 'tests', 'test_web.js')]],
   [node, [path.join(ROOT, 'server', 'test', 'flow.test.js')]],
 ];

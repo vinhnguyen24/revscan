@@ -19,6 +19,7 @@ const path = require('node:path');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'trapkey-web-'));
 process.env.DATA_DIR = TMP;
 process.env.ADMIN_KEY = 'test-admin-key';
+process.env.TRAPKEY_NO_DOTENV = '1';
 
 const config = require('../web/config');
 const views = require('../web/views');
@@ -213,7 +214,7 @@ test('anonymous scan returns a summary with a shareable url', async () => {
 
   const leaks = r.json.data.report.findings.filter((f) => f.weight > 0);
   assert.ok(leaks.length >= 1, 'the probe has at least one leak');
-  assert.ok(leaks.length <= 3, 'anonymous response is limited to the top 3 leaks');
+  assert.ok(leaks.length <= 2, 'anonymous response is limited to the top 2 leaks');
   assert.ok(leaks.every((f) => !('fix' in f)), 'no fix text in the anonymous response');
   assert.equal(r.json.data.report.redacted, true);
   assert.equal(
@@ -412,14 +413,28 @@ test('credits run out after the free allowance', async () => {
   assert.ok(sawCreditError, 'expected NO_CREDITS');
 });
 
-test('owner sees the full report', async () => {
+test('free owner sees summary with paywall, paid owner sees full report', async () => {
   const list = await call('GET', '/api/scans');
   assert.equal(list.status, 200);
   const first = list.json.data.scans[0];
-  const r = await call('GET', `/app/scan/${first.id}`);
-  assert.equal(r.status, 200);
-  assert.match(r.text, /link công khai/, 'owner view exposes the share link');
-  assert.doesNotMatch(r.text, /Còn <strong>/, 'owner view has no paywall');
+  const freeView = await call('GET', `/app/scan/${first.id}`);
+  assert.equal(freeView.status, 200);
+  assert.match(freeView.text, /link công khai/, 'owner view exposes the share link');
+
+  // Upgrade to Audit Pass and confirm the full report unlocks
+  await call('POST', '/api/admin/grant', {
+    body: JSON.stringify({ email: 'dev@studio.test', plan: 'audit' }),
+    headers: { 'content-type': 'application/json', 'x-admin-key': 'test-admin-key' },
+  });
+  const paidView = await call('GET', `/app/scan/${first.id}`);
+  assert.equal(paidView.status, 200);
+  assert.doesNotMatch(paidView.text, /Còn <strong>/, 'paid owner view has no paywall');
+
+  // Restore free for subsequent credit exhaustion test
+  await call('POST', '/api/admin/grant', {
+    body: JSON.stringify({ email: 'dev@studio.test', plan: 'free' }),
+    headers: { 'content-type': 'application/json', 'x-admin-key': 'test-admin-key' },
+  });
 });
 
 test('other accounts cannot read a scan by id', async () => {
@@ -445,16 +460,16 @@ test('other accounts cannot read a scan by id', async () => {
 
 test('admin can change a plan', async () => {
   const r = await call('POST', '/api/admin/grant', {
-    body: JSON.stringify({ email: 'other@studio.test', plan: 'pro' }),
+    body: JSON.stringify({ email: 'other@studio.test', plan: 'audit' }),
     headers: { 'content-type': 'application/json', 'x-admin-key': 'test-admin-key' },
   });
   assert.equal(r.status, 200, r.text);
-  assert.equal(r.json.data.account.plan, 'pro');
+  assert.equal(r.json.data.account.plan, 'audit');
 });
 
 test('admin route rejects a wrong key', async () => {
   const r = await call('POST', '/api/admin/grant', {
-    body: JSON.stringify({ email: 'other@studio.test', plan: 'team' }),
+    body: JSON.stringify({ email: 'other@studio.test', plan: 'annual' }),
     headers: { 'content-type': 'application/json', 'x-admin-key': 'nope' },
   });
   assert.equal(r.status, 401);
@@ -589,7 +604,7 @@ test('upload sweeper survives a missing directory and removes old files', async 
 
 test('invoice-mode checkout records the request instead of failing', async () => {
   const r = await call('POST', '/api/billing/checkout', {
-    body: JSON.stringify({ plan: 'pro' }),
+    body: JSON.stringify({ plan: 'audit' }),
     headers: { 'content-type': 'application/json' },
   });
   assert.equal(r.status, 200, r.text);
@@ -634,11 +649,13 @@ test('stripe webhook rejects a bad signature and a stale timestamp', async () =>
   }
 });
 
-test('checkout sends the chosen plan to Stripe metadata', async () => {
+test('checkout sends the chosen plan to Stripe metadata (one-time vs subscription)', async () => {
   const savedKey = process.env.STRIPE_SECRET_KEY;
-  const savedPrice = process.env.STRIPE_PRICE_TEAM;
+  const savedAudit = process.env.STRIPE_PRICE_AUDIT;
+  const savedAnnual = process.env.STRIPE_PRICE_ANNUAL;
   process.env.STRIPE_SECRET_KEY = 'sk_test';
-  process.env.STRIPE_PRICE_TEAM = 'price_team';
+  process.env.STRIPE_PRICE_AUDIT = 'price_audit';
+  process.env.STRIPE_PRICE_ANNUAL = 'price_annual';
 
   const originalFetch = global.fetch;
   let captured = '';
@@ -650,24 +667,36 @@ test('checkout sends the chosen plan to Stripe metadata', async () => {
     return originalFetch(url, opts);
   };
   try {
+    const auditRes = await call('POST', '/api/billing/checkout', {
+      body: JSON.stringify({ plan: 'audit' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    assert.equal(auditRes.status, 200, auditRes.text);
+    assert.match(captured, /mode=payment/, 'audit pass is a one-time payment');
+    assert.match(captured, /metadata%5Bplan%5D=audit/);
+    assert.doesNotMatch(captured, /subscription_data/, 'mode=payment must not send subscription_data');
+
     const r = await call('POST', '/api/billing/checkout', {
-      body: JSON.stringify({ plan: 'team' }),
+      body: JSON.stringify({ plan: 'annual' }),
       headers: { 'content-type': 'application/json' },
     });
     assert.equal(r.status, 200, r.text);
-    assert.match(captured, /metadata%5Bplan%5D=team/, 'webhook needs the plan');
+    assert.match(captured, /mode=subscription/);
+    assert.match(captured, /metadata%5Bplan%5D=annual/, 'webhook needs the plan');
     assert.match(captured, /metadata%5Baccount_id%5D=acc_/, 'webhook needs the account');
     assert.match(
       captured,
-      /subscription_data%5Bmetadata%5D%5Bplan%5D=team/,
+      /subscription_data%5Bmetadata%5D%5Bplan%5D=annual/,
       'cancellation events carry subscription metadata'
     );
   } finally {
     global.fetch = originalFetch;
     if (savedKey === undefined) delete process.env.STRIPE_SECRET_KEY;
     else process.env.STRIPE_SECRET_KEY = savedKey;
-    if (savedPrice === undefined) delete process.env.STRIPE_PRICE_TEAM;
-    else process.env.STRIPE_PRICE_TEAM = savedPrice;
+    if (savedAudit === undefined) delete process.env.STRIPE_PRICE_AUDIT;
+    else process.env.STRIPE_PRICE_AUDIT = savedAudit;
+    if (savedAnnual === undefined) delete process.env.STRIPE_PRICE_ANNUAL;
+    else process.env.STRIPE_PRICE_ANNUAL = savedAnnual;
   }
 });
 
@@ -675,13 +704,13 @@ test('signed checkout applies the chosen plan and cancellation downgrades it', a
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_checkout';
   try {
     const checkout = {
-      id: 'evt_checkout_team',
+      id: 'evt_checkout_annual',
       type: 'checkout.session.completed',
       data: {
         object: {
           client_reference_id: null,
           customer_details: { email: 'dev@studio.test' },
-          metadata: { plan: 'team' },
+          metadata: { plan: 'annual' },
           customer: 'cus_test_1',
           subscription: 'sub_test_1',
         },
@@ -689,7 +718,7 @@ test('signed checkout applies the chosen plan and cancellation downgrades it', a
     };
     const r = await stripeWebhook(checkout, { secret: 'whsec_checkout' });
     assert.equal(r.status, 200, r.text);
-    assert.match((await call('GET', '/app')).text, /gói <strong>Team<\/strong>/);
+    assert.match((await call('GET', '/app')).text, /gói <strong>Annual CI<\/strong>/);
 
     const replay = await stripeWebhook(checkout, { secret: 'whsec_checkout' });
     assert.equal(replay.status, 200, replay.text);
@@ -817,7 +846,7 @@ test('AI quota errors are reported as AI_QUOTA and refund the credit', async () 
   skip(fs.existsSync(HOSTNAME), 'no hostname.exe');
 
   const grant = await call('POST', '/api/admin/grant', {
-    body: JSON.stringify({ email: 'dev@studio.test', plan: 'pro' }),
+    body: JSON.stringify({ email: 'dev@studio.test', plan: 'audit' }),
     headers: { 'content-type': 'application/json', 'x-admin-key': 'test-admin-key' },
   });
   assert.equal(grant.status, 200, grant.text);
@@ -900,7 +929,7 @@ test('engine failure does not leak stderr and the credit is refunded', async () 
   skip(fs.existsSync(HOSTNAME), 'no hostname.exe');
 
   const grant = await call('POST', '/api/admin/grant', {
-    body: JSON.stringify({ email: 'dev@studio.test', plan: 'pro' }),
+    body: JSON.stringify({ email: 'dev@studio.test', plan: 'audit' }),
     headers: { 'content-type': 'application/json', 'x-admin-key': 'test-admin-key' },
   });
   assert.equal(grant.status, 200, grant.text);
@@ -979,6 +1008,123 @@ test('compare page escapes the measured model', () => {
   const html = views.comparePage({ result });
   assert.ok(!html.includes('<img src=x'), 'the model must not become markup');
   assert.ok(html.includes('&lt;img src=x'), 'the model is still shown, escaped');
+});
+
+test('one-time audit pass expires to free after 30 days without renewing', () => {
+  const { db } = server.trapkey;
+  const credits = require('../web/credits');
+  const account = db.prepare("SELECT * FROM accounts WHERE email='other@studio.test'").get();
+  assert.ok(account);
+  const granted = credits.applyPlan(db, account, 'audit');
+  assert.equal(granted.plan, 'audit');
+  assert.equal(granted.credits_static, 10);
+  assert.equal(granted.credits_ai, 3);
+
+  // Backdate period_start by 31 days -> must revert to free, not reset audit
+  db.prepare('UPDATE accounts SET period_start = ? WHERE id = ?').run(Date.now() - 31 * 86_400_000, granted.id);
+  const expired = credits.refreshPeriod(db, db.prepare('SELECT * FROM accounts WHERE id = ?').get(granted.id));
+  assert.equal(expired.plan, 'free');
+  assert.equal(expired.credits_static, config.plans.free.staticCredits);
+});
+
+test('crack simulation renders redacted for free and full bytes for paid', () => {
+  const report = {
+    file: 'App.exe',
+    kind: 'dotnet',
+    size: 1024,
+    risk: 85,
+    p_success: 0.95,
+    crack_seconds_best: 8,
+    crack_seconds: {},
+    model_notes: [],
+    findings: [
+      { id: 'f1', weight: 25, detail: 'd1', fix: 'fix1' },
+      { id: 'f2', weight: 15, detail: 'd2', fix: 'fix2' },
+      { id: 'f3', weight: 10, detail: 'd3', fix: 'fix3' },
+    ],
+    crack_simulation: {
+      seconds: 8.2,
+      model: 'gpt-6-luna',
+      success: true,
+      patch: {
+        strategy: 'patch-branch',
+        difficulty: 'TRIVIAL',
+        patch_size: 2,
+        offset: 0x0006,
+        original: '2c05',
+        patched: '2d05',
+        method: 'LicenseManager::Validate',
+        explanation: 'flip brfalse.s to brtrue.s',
+        verified: true,
+      },
+    },
+  };
+
+  const summary = views.summaryReport(report);
+  assert.equal(summary.findings.filter((f) => f.weight > 0).length, 2);
+  assert.equal(summary.crack_simulation.patch.strategy, 'patch-branch');
+  assert.equal(summary.crack_simulation.patch.original, undefined);
+  assert.equal(summary.crack_simulation.patch.offset, undefined);
+
+  const freeHtml = views.reportView(summary, { full: false, authenticated: true });
+  assert.match(freeHtml, /CRACK SIMULATION/);
+  assert.match(freeHtml, /patch-branch/);
+  assert.match(freeHtml, /Audit Pass \(\$49\)/);
+  assert.doesNotMatch(freeHtml, /2c05/);
+
+  const paidHtml = views.reportView(report, { full: true, authenticated: true });
+  assert.match(paidHtml, /2c05/);
+  assert.match(paidHtml, /2d05/);
+  assert.match(paidHtml, /LicenseManager::Validate/);
+});
+
+test('language switcher sets tk_lang cookie, renders English, and blocks open redirects', async () => {
+  const sw = await call('GET', '/lang/en?next=%2Fpricing');
+  assert.equal(sw.status, 303);
+  assert.equal(sw.headers.get('location'), '/pricing');
+  const langCookie = (sw.headers.get('set-cookie') || '').split(';')[0];
+  assert.equal(langCookie, 'tk_lang=en');
+
+  const enPricing = await call('GET', '/pricing', { headers: { cookie: langCookie } });
+  assert.equal(enPricing.status, 200);
+  assert.match(enPricing.text, /<html lang="en">/);
+  assert.match(enPricing.text, /\$49<span> one-time<\/span>/);
+
+  const evil = await call('GET', '/lang/en?next=//evil.test/phish');
+  assert.equal(evil.status, 303);
+  assert.equal(evil.headers.get('location'), '/');
+
+  const ja = await call('GET', '/lang/ja?next=%2Fpricing');
+  assert.equal(ja.status, 303);
+  const jaCookie = (ja.headers.get('set-cookie') || '').split(';')[0];
+  assert.equal(jaCookie, 'tk_lang=ja');
+  const jaPricing = await call('GET', '/pricing', { headers: { cookie: jaCookie } });
+  assert.equal(jaPricing.status, 200);
+  assert.match(jaPricing.text, /<html lang="ja">/);
+
+  const badLang = await call('GET', '/lang/xx?next=%2F');
+  assert.equal(badLang.status, 404);
+});
+
+test('interactive demo gallery and /compare?demo=1 work end to end', async () => {
+  const d1 = await call('GET', '/demo');
+  assert.equal(d1.status, 200);
+  assert.match(d1.text, /InvoicePro\.exe/);
+  assert.match(d1.text, /CheckLicenseKey/);
+
+  const d2 = await call('GET', '/demo?sample=protected');
+  assert.equal(d2.status, 200);
+  assert.match(d2.text, /InvoicePro\.protected\.exe/);
+  assert.match(d2.text, /decoy-kit/);
+
+  const d3 = await call('GET', '/demo?sample=compare');
+  assert.equal(d3.status, 200);
+  assert.match(d3.text, /InvoicePro\.protected\.exe/);
+
+  const cmp = await call('GET', '/compare?demo=1');
+  assert.equal(cmp.status, 200);
+  assert.match(cmp.text, /InvoicePro\.exe/);
+  assert.match(cmp.text, /InvoicePro\.protected\.exe/);
 });
 
 /* -------------------------------- runner -------------------------------- */

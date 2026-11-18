@@ -144,11 +144,12 @@ def disassemble(
     body: bytes,
     resolve: Callable[[int], str],
     max_instructions: int = 400,
+    show_bytes: bool = False,
 ) -> list[str]:
     """Decode IL into `IL_0000: opcode operand` lines.
 
-    Unknown bytes stop decoding instead of being guessed: a wrong decode is worse
-    evidence than a short, truthful one.
+    When `show_bytes=True`, emit `IL_0000 [hex]: opcode operand` so a Round 2
+    patch model sees exact instruction bytes without guessing.
     """
     out: list[str] = []
     i = 0
@@ -175,9 +176,9 @@ def disassemble(
                 break
             name, kind = entry
 
-        text = f"IL_{start:04x}: {name}"
         if kind is None:
-            out.append(text)
+            prefix = f"IL_{start:04x} [{body[start:i].hex()}]" if show_bytes else f"IL_{start:04x}"
+            out.append(f"{prefix}: {name}")
             continue
 
         # Slices past the end are silently short in Python, which decoded garbage
@@ -187,39 +188,40 @@ def disassemble(
                 raise ValueError("truncated operand")
             return body[i:i + width]
 
+        suffix = ""
         try:
             if kind == "u8":
                 operand = take(1)[0]
                 i += 1
-                text += f" {operand}"
+                suffix = f" {operand}"
             elif kind == "i8":
                 value = take(1)[0]
                 i += 1
-                text += f" {value - 256 if value >= 128 else value}"
+                suffix = f" {value - 256 if value >= 128 else value}"
             elif kind == "u16":
                 value = int.from_bytes(take(2), "little")
                 i += 2
-                text += f" {value}"
+                suffix = f" {value}"
             elif kind == "i32":
                 value = int.from_bytes(take(4), "little", signed=True)
                 i += 4
-                text += f" {value}"
+                suffix = f" {value}"
             elif kind == "i64":
                 value = int.from_bytes(take(8), "little", signed=True)
                 i += 8
-                text += f" {value}"
+                suffix = f" {value}"
             elif kind in ("r4", "r8"):
                 import struct
 
                 raw = take(4 if kind == "r4" else 8)
                 i += len(raw)
                 value = struct.unpack("<f" if kind == "r4" else "<d", raw)[0]
-                text += f" {value:g}"
+                suffix = f" {value:g}"
             elif kind in ("br8", "br32"):
                 width = 1 if kind == "br8" else 4
                 delta = int.from_bytes(take(width), "little", signed=True)
                 i += width
-                text += f" IL_{i + delta:04x}"
+                suffix = f" IL_{i + delta:04x}"
             elif kind == "switch":
                 count = int.from_bytes(take(4), "little", signed=True)
                 i += 4
@@ -228,22 +230,76 @@ def disassemble(
                     delta = int.from_bytes(take(4), "little", signed=True)
                     i += 4
                     targets.append(f"IL_{i + delta:04x}")
-                text += " (" + ", ".join(targets) + ")"
+                suffix = " (" + ", ".join(targets) + ")"
             elif kind == "token":
                 token = int.from_bytes(take(4), "little")
                 i += 4
                 resolved = resolve(token)
                 if name == "ldstr" and resolved:
-                    text += " " + _quote(resolved)
+                    suffix = " " + _quote(resolved)
                 else:
-                    text += " " + (resolved or f"token(0x{token:08x})")
+                    suffix = " " + (resolved or f"token(0x{token:08x})")
         except ValueError:
-            out.append(text + " <truncated>")
+            prefix = f"IL_{start:04x} [{body[start:i].hex()}]" if show_bytes else f"IL_{start:04x}"
+            out.append(f"{prefix}: {name}{suffix} <truncated>")
             break
-        out.append(text)
+        prefix = f"IL_{start:04x} [{body[start:i].hex()}]" if show_bytes else f"IL_{start:04x}"
+        out.append(f"{prefix}: {name}{suffix}")
     if i < n and len(out) >= max_instructions:
         out.append(f"IL_{i:04x}: ... ({n - i} bytes truncated)")
     return out
+
+
+_FIXED_OPERAND_WIDTH = {
+    "u8": 1,
+    "i8": 1,
+    "br8": 1,
+    "u16": 2,
+    "i32": 4,
+    "r4": 4,
+    "br32": 4,
+    "token": 4,
+    "i64": 8,
+    "r8": 8,
+}
+
+
+def call_tokens(body: bytes) -> list[int]:
+    """Return metadata tokens referenced by `call`/`callvirt`/`jmp` in an IL body."""
+    tokens: list[int] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        op = body[i]
+        i += 1
+        if op == 0xFE:
+            if i >= n:
+                break
+            entry = TWO.get(body[i])
+            i += 1
+        else:
+            entry = ONE.get(op)
+        if not entry:
+            break
+        name, kind = entry
+        if kind is None:
+            continue
+        if kind == "switch":
+            if i + 4 > n:
+                break
+            count = int.from_bytes(body[i:i + 4], "little", signed=True)
+            i += 4
+            if count < 0 or count > 4096 or i + count * 4 > n:
+                break
+            i += count * 4
+            continue
+        width = _FIXED_OPERAND_WIDTH.get(kind, 0)
+        if i + width > n:
+            break
+        if kind == "token" and name in ("call", "callvirt", "jmp"):
+            tokens.append(int.from_bytes(body[i:i + 4], "little"))
+        i += width
+    return tokens
 
 
 # --------------------------------------------------------------------------- #
@@ -287,6 +343,8 @@ def dotnet_code(
     budget_chars: int = 18_000,
     max_methods: int = MAX_CODE_METHODS,
     max_scan_bytes: int = MAX_SCAN_BYTES,
+    target_name: str | None = None,
+    show_bytes: bool = False,
 ) -> str:
     """Render the most licence-relevant .NET method bodies for the AI pack.
 
@@ -299,6 +357,17 @@ def dotnet_code(
     by_rva = {m["rva"]: i + 1 for i, m in enumerate(dotnet.methods) if m["rva"]}
     chosen: list[tuple[int, str]] = []  # (method index, why)
     seen: set[int] = set()
+
+    if target_name:
+        bare = target_name.strip().split("::")[-1].split(".")[-1].lower()
+        for idx, m in enumerate(dotnet.methods, start=1):
+            if not m["rva"]:
+                continue
+            full = dotnet.resolve_token(0x06000000 | idx).lower()
+            if full == target_name.strip().lower() or m["name"].lower() == bare:
+                chosen.append((idx, "target from Round 1"))
+                seen.add(idx)
+                break
 
     # A body that loads a licensing string is stronger evidence than a name that
     # merely looks like licensing (`TrialDivision` in mscorlib is maths), so
@@ -341,7 +410,12 @@ def dotnet_code(
         body = dotnet.method_body(dotnet.methods[idx - 1]["rva"])
         if not body:
             continue
-        lines = disassemble(body, dotnet.resolve_token, max_instructions=120)
+        lines = disassemble(
+            body,
+            dotnet.resolve_token,
+            max_instructions=120,
+            show_bytes=show_bytes,
+        )
         name = dotnet.resolve_token(0x06000000 | idx)
         block = "\n".join(
             [f"method: {name} — {reason} ({len(body)} IL bytes)"]
