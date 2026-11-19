@@ -3,6 +3,7 @@ server/data/
 scratch/
 .env
 .env.*
+!.env.example
 
 # build output
 *.protected.exe
@@ -20,3 +21,7 @@ node_modules/
 
 # web runtime data (sqlite, outbox, uploads)
 web-data/
+
+# OS
+.DS_Store
+Thumbs.db

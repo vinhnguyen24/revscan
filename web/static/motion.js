@@ -437,7 +437,26 @@
     });
   }
 
+  function initThemeToggle() {
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    const sync = (theme) => {
+      document.documentElement.setAttribute('data-theme', theme);
+      btn.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+    };
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    sync(current === 'light' ? 'light' : 'dark');
+    btn.addEventListener('click', () => {
+      const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      sync(next);
+      try {
+        localStorage.setItem('tk_theme', next);
+      } catch { /* ignore */ }
+    });
+  }
+
   function boot() {
+    initThemeToggle();
     initScrollAndTagline();
     initRevealsAndCounters();
     initDemoTabs();

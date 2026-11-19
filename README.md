@@ -1,297 +1,279 @@
 # TrapKey
 
-> **Bắt đầu ở đây:** [`AGENTS.md`](AGENTS.md) — ngữ cảnh master cho phiên làm việc mới.
-> Trạng thái gần nhất: [`docs/HANDOFF_2026-11-14.md`](docs/HANDOFF_2026-11-14.md).
+> **How many seconds until an AI agent cracks your Windows app?**
 
-**Scan một app Windows: AI reverse-engineering agent mất bao nhiêu giây để bẻ?**
-
-```bash
-python3 scan.py C:/path/YourApp.exe
-```
+TrapKey is an open-source security scanner that answers one question: *how fast can an AI reverse-engineering agent find and patch the license check in your Windows binary?* It gives you hard numbers, real evidence, and a concrete crack simulation — not vague advice.
 
 ```
+$ python scan.py YourApp.exe
+
 TrapKey scan — YourApp.exe
-dotnet · 4,631,552 bytes · sha256 952703a7a04ee371…
-────────────────────────────────────────────────────────
+dotnet · 4,631,552 bytes · sha256 952703a7…
+────────────────────────────────────────────────
 → AI cracks this in ~48s (likely, p=0.9) · risk 59/100
 
 AI crack time (estimated)
   Claude/GPT class (API)     ~48s
   cheap API model            ~81s
-  local 20B (Ollama)         ~3.1 phút
+  local 20B (Ollama)         ~3.1 min
   P(success)                 0.9
-  risk                       59/100 (100 = cracked in seconds)
+  risk                       59/100
 
-What the agent actually reads
-  · licence strings visible but functions unnamed: agent must resolve xrefs
-  · tool time scaled x1.5 for a 5 MB binary
-  · read budget 104,721 tokens / agent rounds 2.6 / tool time 3s
+What the agent reads
+  · .NET app keeps English function names (CheckLicenseKey, IsProUnlocked)
+  · License check is readable IL, not obfuscated
+  · "License expired" string leads straight to the check function
 ```
 
-### Chế độ `--ai` dùng model nào? (không bắt buộc OpenAI)
+## Features
 
-Static scan **không cần key gì cả**. `--ai` là tuỳ chọn, và dùng interface
-OpenAI-compatible nên cắm được gần như mọi model:
+- **Static scan** — parse PE headers, .NET metadata (ECMA-335), IL bytecode, imports, exports, strings. Zero external dependencies. Runs in <1 second.
+- **AI-measured scan** (`--ai`) — send evidence to a live LLM and measure how many seconds it takes to find the license check. Works with OpenAI, Anthropic, Gemini, Ollama, DeepSeek, or any OpenAI-compatible API.
+- **Crack simulation** — after finding the check, the AI proposes exact patch bytes (`offset 0x2056: 2C → 2D`) and TrapKey verifies the patch is valid.
+- **Before/after comparison** — scan your original app and the protected version, see what improved.
+- **CI gate** — `--min-seconds 60` exits with code 1 if an AI could crack your app in under 60 seconds.
+- **Decoy Kit** — drop-in C#/C++ source files that add realistic fake license functions to waste the attacker's time.
+- **Web UI** — self-hosted SaaS with upload, reports, auth, dashboard. Zero npm dependencies, server-rendered HTML. 12 languages.
+- **Calibration** — batch-scan a corpus of binaries and fit a multiplier `k` so the cost model matches real AI measurements.
 
-| Provider | Env | Chi phí |
-|---|---|---|
-| **Ollama local** | `TRAPKEY_AI_PROVIDER=ollama` `TRAPKEY_AI_MODEL=qwen2.5-coder:7b` | 0đ (chậm) |
-| **Ollama Cloud** | `OLLAMA_API_KEY` `TRAPKEY_AI_MODEL=gpt-oss:120b` | theo plan, không cần GPU |
-| **OpenCode Go** | `TRAPKEY_AI_PROVIDER=openai` `OPENAI_BASE_URL=https://opencode.ai/inference/go/openai/v1` `OPENAI_API_KEY=<Go key>` `TRAPKEY_AI_MODEL=gpt-6-luna` | $10/tháng (Go) |
-| **Google Gemini** | `TRAPKEY_AI_PROVIDER=gemini` `GEMINI_API_KEY` `TRAPKEY_AI_MODEL=gemini-3.1-flash-lite` (hoặc `gemini-3.6-flash`/`3.8-flash`) | free tier / rẻ |
-| OpenAI | `OPENAI_API_KEY` `TRAPKEY_AI_MODEL=gpt-4o-mini` | ~$0.01/scan |
-| **DeepSeek / Groq / Together / OpenRouter / vLLM / LM Studio** | `OPENAI_BASE_URL=https://api.deepseek.com/v1` + `OPENAI_API_KEY` | rẻ hơn OpenAI |
-| Anthropic | `ANTHROPIC_API_KEY` | ~$0.01/scan |
+## Quick Start
+
+**Requirements:** Python 3.10+, Node.js 22+ (for web UI only)
 
 ```bash
-# local, miễn phí
-TRAPKEY_AI_PROVIDER=ollama TRAPKEY_AI_MODEL=qwen2.5-coder:7b python3 scan.py App.exe --ai
+# Scan a binary (no API key needed)
+python scan.py path/to/App.exe
 
-# Ollama Cloud: chỉ cần key, base https://ollama.com/v1 được set tự động
-OLLAMA_API_KEY=... TRAPKEY_AI_MODEL=gpt-oss:120b python3 scan.py App.exe --ai
+# JSON output for CI/scripts
+python scan.py App.exe --json
 
-# Google Gemini (AI Studio key). thinkingBudget=0 để đo tốc độ thật.
-TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=... TRAPKEY_AI_MODEL=gemini-3.1-flash-lite \
-  python3 scan.py App.exe --ai
-# 3.8-flash: cần streaming + timeout ~300s; đo thử notepad mất 276s -> không hợp demo.
-TRAPKEY_AI_MODEL=gemini-3.8-flash TRAPKEY_AI_TIMEOUT=300 python3 scan.py App.exe --ai
+# CI gate: fail if crackable in under 60 seconds
+python scan.py App.exe --min-seconds 60
 
-# OpenCode Go: OpenAI-compatible; default rẻ gpt-6-luna, mạnh hơn deepseek-v4.1-flash
-OPENAI_BASE_URL=https://opencode.ai/inference/go/openai/v1 OPENAI_API_KEY=... \
-  TRAPKEY_AI_MODEL=gpt-6-luna python3 scan.py App.exe --ai
+# Measure with a live AI model
+OPENAI_API_KEY=sk-... python scan.py App.exe --ai
 
-# rẻ, nhanh
-OPENAI_BASE_URL=https://api.deepseek.com/v1 OPENAI_API_KEY=sk-... \
-  TRAPKEY_AI_MODEL=deepseek-chat python3 scan.py App.exe --ai
+# Start the web UI
+npm start  # http://127.0.0.1:7200
 ```
 
-Web tự ẩn nút "AI-measured" khi chưa cấu hình model, và trả `503 AI_UNAVAILABLE`
-kèm hướng dẫn thay vì lỗi mơ hồ.
+## AI Provider Setup
 
-> **Gemini free tier dùng nội dung để cải thiện sản phẩm.** Với code/strings của khách,
-> bật billing (paid tier) trước khi dùng `--ai`; paid tier không dùng dữ liệu để train.
+Static scan needs **no API key**. The `--ai` flag uses an OpenAI-compatible interface and works with almost any provider:
 
-### `--ai` gửi gì cho model?
-
-Không chỉ strings: pack có **code thật** để model không trả "insufficient evidence".
-
-- .NET: method body IL của các method load licence string (`ldstr`) hoặc tên licence —
-  token được resolve thành `Type::Method`, `ldstr` thành chuỗi thật.
-- Native: `objdump` tìm instruction tham chiếu licence string (rip-relative) rồi lấy
-  nguyên hàm chứa nó; call vào import table được annotate (`->CRYPT32!CryptVerifySignatureA`).
-  Không có xref thì fallback: crypto imports → named export → entry point.
-- `objdump` là **optional**: thiếu nó thì pack không có code, scan vẫn chạy.
-  Tắt hẳn bằng `TRAPKEY_AI_CODE=0` (batch chỉ đo strings, nhanh hơn).
-
----
-
-## Web SaaS (chạy được, 0 dependency)
-
-```bash
-npm start                  # web/server.js, http://127.0.0.1:7200
-```
-
-- `/` landing · `/scan` upload · `/r/:id` báo cáo chia sẻ được
-- `/pricing` · `/login` (magic link) · `/app` dashboard · `/app/settings`
-- `/app/admin` (nhập key ở form; key in ra ở boot hoặc trong `web-data/admin.key`)
-
-Dev không cần SMTP: link đăng nhập ghi vào `web-data/outbox/*.txt` và API trả `devUrl`.
-Production **không** trả `devUrl` (đặt `TRAPKEY_DEV_MAILER=1` chỉ khi bạn thật sự muốn
-mở lại đường dev). Không có `RESEND_API_KEY` thì link chỉ nằm trong outbox.
-
-Thanh toán: có `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` thì tạo Checkout thật;
-không có Stripe thì rơi vào **invoice mode** (ghi nhận yêu cầu, admin cấp gói).
-Thiếu `STRIPE_WEBHOOK_SECRET` thì endpoint webhook trả 503 và **không** nhận event
-không chữ ký — nếu không, ai cũng tự nâng gói được.
-
-Chi tiết kiến trúc, API, credit, bảo mật: [`docs/WEB_PLAN.md`](docs/WEB_PLAN.md).
-
-### Credit
-
-| | static | ai |
+| Provider | Setup | Cost |
 |---|---|---|
-| Free | 5 / tháng | 1 / tháng |
-| Pro $29 | 200 / tháng | 25 / tháng |
-| Team $99 | 2000 / tháng | 100 / tháng |
-| Khách vãng lai | 1 / ngày / IP (chỉ tóm tắt) | — |
+| **Ollama (local)** | `TRAPKEY_AI_PROVIDER=ollama TRAPKEY_AI_MODEL=qwen2.5-coder:7b` | Free (slow) |
+| **Ollama Cloud** | `OLLAMA_API_KEY=... TRAPKEY_AI_MODEL=gpt-oss:120b` | Per plan |
+| **Google Gemini** | `TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=...` | Free tier available |
+| **OpenAI** | `OPENAI_API_KEY=sk-...` | ~$0.01/scan |
+| **DeepSeek / Groq / Together / OpenRouter** | `OPENAI_BASE_URL=https://api.deepseek.com/v1 OPENAI_API_KEY=...` | Varies |
+| **Anthropic** | `ANTHROPIC_API_KEY=...` | ~$0.01/scan |
+| **Any OpenAI-compatible** | `OPENAI_BASE_URL=... OPENAI_API_KEY=...` | Varies |
 
-Cùng một file (SHA-256) trong 24h → **không trừ credit**. Scan lỗi → hoàn credit.
-Mọi thay đổi ghi vào bảng `ledger`.
+See [`.env.example`](.env.example) for all configuration options.
 
----
+## How the Scanner Works
 
-## Cái gì đang có trong repo
+No guesswork. Every number is extracted from the binary:
 
-| Thành phần | Trạng thái | Mô tả |
-|---|---|---|
-| **`scanner/` + `scan.py`** | ✅ chạy được, có test | Đọc PE/.NET metadata thật, đếm hàm/method, tính thời gian crack theo cost model minh bạch |
-| **`web/`** | ✅ chạy được, 45 test | SaaS: landing, upload scan, **/compare trước–sau từ 2 report JSON**, magic-link auth, credit, dashboard, admin, invoice/Stripe, retention, AI cooldown |
-| `cli/trapkey.py protect` | ✅ chạy được (15 test) | Strip PDB + payload v2 mã hoá theo build, decoy chunk, chữ ký bundle tuỳ chọn |
-| `cli/trapkey.py compare` | ✅ chạy được (29 test) | Scan gốc vs bản protect: delta giây/p/risk + finding thay đổi; `--ai` đo thật cả 2 bản |
-| `benchmark.py` | ✅ chạy được (46 test) | Ground-truth harness: chấm static/`--ai` bằng nhãn, không dùng success tự báo |
-| `cli/trapkey.py verify` | ✅ chạy được | Verify token RSA offline |
-| `server/` | ✅ chạy được (16 test) | License server + admin UI — **không phải sản phẩm chính**, xem ghi chú bên dưới |
-| `sdk/cpp`, `sdk/dotnet` | ⚠️ chưa compile | SDK licensing, Windows-only |
-| `demo/demo.py` | ✅ | Demo luồng license end-to-end |
-
-> **Định vị:** sản phẩm là **scan → protect → monitor**. License server là add-on
-> để dành, không đưa lên trang chủ (nó là commodity, không phải lý do khách trả tiền).
-
----
-
-## Scan hoạt động thế nào
-
-Không đoán. Mỗi con số đều lấy từ file:
-
-| Lấy được gì | Từ đâu |
+| Evidence | Source |
 |---|---|
-| Số hàm native (chính xác, không ước lượng) | `.pdata` — mỗi `RUNTIME_FUNCTION` 12 byte |
-| Số method .NET + tên + IL bytes | ECMA-335 metadata: table `MethodDef` (0x06), heap `#Strings` |
-| Tên hàm/type bị lộ | `ident.py`: tách camelCase rồi match cả từ (tránh `m_userSerializationData`) |
-| Import crypto/anti-debug | import table |
-| Packed / obfuscated | entropy section + tỉ lệ tên rác |
-| Trap đang bật | marker `TK1`/`TK2` + pattern prompt-injection |
+| Native function count (exact) | `.pdata` — each `RUNTIME_FUNCTION` is 12 bytes |
+| .NET methods + names + IL bytes | ECMA-335 metadata: `MethodDef` table, `#Strings` heap |
+| Leaked function/type names | `ident.py`: split camelCase, match whole words |
+| Crypto/anti-debug imports | PE import table |
+| Packed/obfuscated | Section entropy + junk name ratio |
+| Decoy coverage | `TK_DECOY_V1` marker + IL call analysis |
 
-Sau đó `estimate.py` tính:
+The cost model in [`estimate.py`](scanner/estimate.py) then computes:
 
 ```
 seconds = tool_time + read_budget / prefill_rate
-        + rounds * 1200 output tokens / decode_rate
+        + rounds × 1200 output_tokens / decode_rate
 ```
 
-`tool_time` = 22s (Ghidra headless) hoặc 2s (.NET dump). `read_budget` phụ thuộc
-vào việc agent có tìm được chỗ kiểm tra license bằng `grep` hay phải đọc cả code.
-Công thức + hằng số + cách calibrate: [`docs/CALIBRATION.md`](docs/CALIBRATION.md).
+Where `tool_time` = 22s (Ghidra) or 2s (.NET dump). Full formula and calibration methodology: [`docs/CALIBRATION.md`](docs/CALIBRATION.md).
 
----
+## What `--ai` Sends to the Model
 
-## Chạy
+Not just strings — the evidence pack includes **real code** so the model doesn't return "insufficient evidence":
+
+- **.NET**: IL method bodies of functions that load license strings (`ldstr`) or have license-related names. Tokens are resolved to `Type::Method`.
+- **Native**: `objdump` finds instructions referencing license strings (RIP-relative), then extracts the containing function. Import calls are annotated (`→ CRYPT32!CryptVerifySignatureA`).
+- `objdump` is **optional** — without it, the pack has no disassembly but the scan still runs. Set `TRAPKEY_AI_CODE=0` to disable.
+
+## Project Structure
+
+```
+scan.py                  CLI entry: scan <file> [--json] [--min-seconds] [--ai]
+calibrate.py             Batch scan + fit multiplier k
+benchmark.py             Ground-truth harness (hit/FP/FN, latency)
+
+scanner/
+  peinfo.py              PE headers, sections, entropy, imports, exports, .pdata
+  dotnet.py              ECMA-335 metadata: MethodDef/TypeDef/MemberRef, IL body
+  il.py                  IL decoder → method body (ldstr/call with real names)
+  native.py              objdump xref: license string/crypto → disassembly
+  ident.py               Identifier splitting, false-positive prevention
+  evidence.py            Evidence collection + trap/packer/asar detection
+  estimate.py            Cost model → seconds
+  report.py              Human-readable + JSON rendering
+  ai.py                  AI provider config + crack simulation + error classification
+  compare.py             Original vs protected: delta + finding changes
+
+cli/trapkey.py           protect / verify / info / compare / compare-reports
+web/
+  server.js              HTTP, routes, billing, admin, static
+  db.js                  SQLite (node:sqlite), schema, transactions, ledger
+  auth.js                Magic-link auth, session cookies, CI tokens
+  credits.js             Credit buckets, monthly reset, anonymous quota
+  scanjob.js             Upload streaming → engine subprocess → cleanup
+  views.js               Server-rendered HTML (no framework, no build step)
+  i18n.js                12 languages (en, vi, ja, ko, zh, de, fr, es, pt, ru, pl, id)
+  static/                CSS, JS, assets
+
+sdk/dotnet/              TrapKeyDecoy.cs — Decoy Kit for C#
+sdk/cpp/                 trapkey_decoy.h — Decoy Kit for C/C++
+server/                  License server (optional add-on)
+deploy/                  systemd unit + nginx config
+docs/                    Spec, calibration, case studies, roadmap
+benchmarks/              Ground-truth corpus instructions
+tests/                   256 tests (Python unittest + Node.js)
+```
+
+## CLI Reference
 
 ```bash
-# web
-npm start                          # http://127.0.0.1:7200
-node tests/test_web.js             # 45 test end-to-end
+# --- Scan ---
+python scan.py App.exe                          # Human-readable report
+python scan.py App.exe --json                   # JSON output
+python scan.py App.exe --ai                     # Live AI measurement
+python scan.py App.exe --min-seconds 60         # CI gate (exit 1 if below)
+python scan.py dist/*.exe --json                # Batch scan
 
-# scan một file
-python3 scan.py C:/path/App.exe
+# --- Protect ---
+python cli/trapkey.py protect App.exe --level 3        # Strip PDB + encrypted payload + decoy
+python cli/trapkey.py protect App.exe --no-strip       # Keep PDB
+python cli/trapkey.py info App.protected.exe           # Inspect payload/chunks
 
-# máy đọc (JSON, cho web/CI)
-python3 scan.py App.exe --json
+# --- Compare ---
+python cli/trapkey.py compare App.exe App.protected.exe --json
+python cli/trapkey.py compare App.exe App.protected.exe --ai --repeat 3
+python cli/trapkey.py compare-reports before.json after.json --json
 
-# CI gate: fail nếu AI bẻ được dưới 60 giây
-python3 scan.py dist/App.exe --min-seconds 60
+# --- Calibrate ---
+python calibrate.py /path/to/binaries --limit 20
+python calibrate.py /path/to/binaries --ai --repeat 3
+TRAPKEY_CALIBRATION_K=1.27 python scan.py App.exe
 
-# đo thật bằng model (tốn token)
-OPENAI_API_KEY=... python3 scan.py App.exe --ai
-TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=... python3 scan.py App.exe --ai
-
-# calibrate hàng loạt: model vs đo thật -> ra một multiplier k
-python3 calibrate.py C:/path/binaries --limit 20
-TRAPKEY_AI_PROVIDER=ollama python3 calibrate.py C:/path/binaries --ai --limit 10
-# Gemini free tier: 5 request/phút -> pace giữa các call
-TRAPKEY_AI_PROVIDER=gemini GEMINI_API_KEY=... python3 calibrate.py C:/path/binaries --ai --repeat 3 --pause 13
-TRAPKEY_CALIBRATION_K=1.7 python3 scan.py App.exe
-
-# protect: strip PDB + chèn payload v2 (mã hoá theo build, có decoy)
-python3 cli/trapkey.py protect dist/App.exe --level 3
-python3 cli/trapkey.py protect dist/App.exe --no-strip --level 2
-python3 cli/trapkey.py info dist/App.protected.exe    # xem payload/chunk/decoy
-
-# đo lại sau khi protect: trước/sau, delta giây/p/risk, finding nào mất
-python3 cli/trapkey.py compare dist/App.exe dist/App.protected.exe --json
-# đo thật cả 2 bản bằng cùng một model (1 round/bản; --repeat 3 lấy median)
-python3 cli/trapkey.py compare dist/App.exe dist/App.protected.exe --ai --repeat 3 --json
-# kết quả thật: docs/CASE_STUDY_2026-11-16_compare_ai.md
-
-# web /compare: upload 2 report JSON, không upload binary
-python3 scan.py dist/App.exe --json > before.json
-python3 scan.py dist/App.protected.exe --json > after.json
-# rồi mở /compare và chọn 2 file, hoặc:
-python3 cli/trapkey.py compare-reports before.json after.json --json
-
-# ground-truth benchmark: nhãn do người tạo, không lấy output TrapKey làm nhãn
-python3 benchmark.py --corpus C:/corpus --labels labels.json --static
-python3 benchmark.py --corpus C:/corpus --labels labels.json --ai --limit 10
-
-# payload feed có chữ ký (tuỳ chọn; từ chối bundle không do vendor ký)
-python3 cli/trapkey.py protect dist/App.exe --sig payloads.sig --pubkey vendor.pem
-
-# test
-python3 tests/test_scan.py
-python3 tests/test_protect.py
-node server/test/flow.test.js      # license server (add-on)
-python3 demo/demo.py               # luồng license end-to-end
-
-# không có binary Windows sẵn: trỏ tới thư mục của bạn
-TRAPKEY_TEST_BINARIES=/path/to/binaries npm test
+# --- Benchmark ---
+python benchmark.py --corpus /path --labels labels.json --static
+python benchmark.py --corpus /path --labels labels.json --ai --limit 10
 ```
 
-CI (`.github/workflows/ci.yml`) chạy Ubuntu + Windows; test PE/.NET tự skip nếu không
-tìm thấy binary (`TRAPKEY_TEST_EXE`, `TRAPKEY_TEST_DOTNET`, `TRAPKEY_TEST_BINARIES`).
+## Web UI
 
-`protect` levels: `1` = plaintext (debug), `2` = encrypted theo build (không gợi ý),
-`3` = encrypted + decoy chunk + reference trailer (khuyến nghị — agent decode được
-rồi đọc decoy).
+```bash
+npm start  # http://127.0.0.1:7200
+```
 
----
+Self-hosted, zero npm dependencies, server-rendered HTML.
 
-## Đã kiểm chứng trong môi trường này
+- `/` — Landing page
+- `/demo` — Interactive demo with sample reports
+- `/scan` — Upload and scan a binary
+- `/compare` — Compare before/after reports
+- `/pricing` — Plans (Free / Audit Pass / Annual CI)
+- `/login` — Magic-link authentication
+- `/app` — Dashboard (scan history, credits)
+- `/r/:id` — Shareable public report
 
-| Việc | Kết quả |
+**Dev mode:** Without `RESEND_API_KEY`, login links are saved to `web-data/outbox/` and the API returns a `devUrl`. Set `NODE_ENV=production` to disable.
+
+## Decoy Kit
+
+Drop-in source files that add realistic fake license functions to your app. An AI agent wastes time analyzing decoys instead of finding the real check.
+
+**C#:**
+```csharp
+// Add to your project, call from startup:
+TrapKeyDecoy.Warmup();
+
+// Sprinkle multi-point checks (≥5 locations):
+TrapKeyDecoy.Verify(licenseKey, 0);  // in Main
+TrapKeyDecoy.Verify(licenseKey, 1);  // in SaveFile
+TrapKeyDecoy.Verify(licenseKey, 2);  // in ExportPdf
+```
+
+**C/C++:**
+```c
+#include "trapkey_decoy.h"
+trapkey_decoy_warmup();
+trapkey_decoy_verify(key, 0);
+```
+
+The scanner detects Decoy Kit integration and reports coverage. See [`sdk/dotnet/TrapKeyDecoy.cs`](sdk/dotnet/TrapKeyDecoy.cs) and [`sdk/cpp/trapkey_decoy.h`](sdk/cpp/trapkey_decoy.h).
+
+## Tests
+
+```bash
+# Run all 256 tests
+npm test
+
+# Or individually:
+python tests/test_scan.py
+python tests/test_calibrate.py
+python tests/test_protect.py
+python tests/test_compare.py
+python tests/test_disasm.py
+python tests/test_benchmark.py
+python tests/test_decoy_kit.py
+node tests/test_web.js
+node tests/test_web_views.js
+node server/test/flow.test.js
+```
+
+CI runs on Ubuntu + Windows. PE/.NET tests auto-skip if no test binaries are found. Set `TRAPKEY_TEST_EXE`, `TRAPKEY_TEST_DOTNET`, or `TRAPKEY_TEST_BINARIES` to point to real binaries.
+
+## Configuration
+
+All config is via environment variables. See [`.env.example`](.env.example) for the full list.
+
+| Variable | Purpose |
 |---|---|
-| 34 test scanner (ident, PE, .NET metadata, chiều của model, provider, Gemini/Gemini usage, AI error codes, report JSON) | ✅ pass |
-| 18 test calibrate (fit k, tool time không bị scale, per-model k, CLI) | ✅ pass |
-| Calibrate run 4 (`gpt-6-luna` qua OpenCode Go) | **k=1.2673**, n=7, spread 2.27x (2026-11-16) |
-| Calibrate run 3 (`ollama/gpt-oss:120b` qua gateway S3) | k=0.2758, n=10, spread 1.87x (2026-11-14, cũ) |
-| 15 test protect (payload v2 round-trip, seed theo build, strip PDB, chữ ký bundle, CLI) | ✅ pass |
-| 29 test compare (delta, JSON một object, same file, lỗi input, PE truncate, AI block/median, noise) | ✅ pass |
-| 46 test benchmark (labels, matching, FP/FN, skip, CLI, JSON) | ✅ pass |
-| 14 test disasm (IL decoder, token resolve, objdump xref, metadata align) | ✅ pass |
-| `notepad.exe` (không có license logic) | ~72s, p=0.35 |
-| `notepad.exe` + string license | ~60s, p=0.85 (string giúp agent tìm nhanh hơn) |
-| cùng file, `protect --level 3` (v2) | ~83s, p=0.05 (strip PDB + trap + decoy) |
-| `mscorlib.dll` (27.492 methods) | ~48s, p=0.90 (metadata lộ toàn bộ tên hàm) |
-| 45 test web (login, quota, cache, paywall, admin, CI token, webhook, retention, AI quota/cooldown, 404, AI mode, xoá tài khoản, escape) | ✅ pass |
-| 16 test license server | ✅ pass |
-| SDK C++ / .NET compile | ⚠️ chưa (không có MSVC ở đây) |
+| `TRAPKEY_AI_PROVIDER` | `openai` / `ollama` / `anthropic` / `gemini` |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | AI provider credentials |
+| `TRAPKEY_AI_MODEL` | Model name (default: provider-specific) |
+| `TRAPKEY_CALIBRATION_K` | Fitted multiplier from `calibrate.py` |
+| `PORT` / `HOST` | Web server (default: 7200 / 127.0.0.1) |
+| `ADMIN_KEY` | Admin dashboard access |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe billing (optional) |
+| `RESEND_API_KEY` | Email delivery (optional; without it, links go to outbox) |
 
----
+## Technical Details
 
-## Cấu trúc
+- **Zero npm dependencies** — the web server uses only Node.js built-in modules (`node:http`, `node:sqlite`, `node:crypto`, `node:fs`). No Express, no React, no build step.
+- **Engine isolation** — the Python scanner runs as a subprocess with timeout + SIGKILL. A malformed PE cannot crash the web server.
+- **Privacy** — uploaded files are deleted immediately after scan (even on error). Only SHA-256 hash + report are stored.
+- **Credits** — deducted before scan, refunded on engine error. Same file (SHA-256) cached for 24h.
 
-```
-scan.py                  entry: scan <file> [--json] [--min-seconds] [--ai]
-calibrate.py             batch scan + đo thật -> fit multiplier k
-benchmark.py             chấm static/--ai bằng nhãn ground truth (hit/FP/FN/latency)
-benchmarks/              README + labels.example.json
-web/
-  server.js              HTTP + routes + billing + admin
-  db.js                  SQLite (node:sqlite), schema, ledger
-  auth.js                magic link, session cookie, CI token
-  credits.js             credit buckets, monthly reset, anonymous quota
-  scanjob.js             upload streaming + engine subprocess
-  views.js / static/     server-rendered HTML, CSS, scan.js
-deploy/                  systemd unit + nginx conf
-scanner/
-  peinfo.py              PE: sections, entropy, imports, exports, .pdata
-  dotnet.py              ECMA-335 metadata: MethodDef/TypeDef/MemberRef + IL body
-  il.py                  IL decoder (ldstr/call resolve tên thật)
-  native.py              objdump xref licence string/crypto -> disassembly
-  ident.py               tách identifier, tránh false positive
-  evidence.py            thu thập bằng chứng + phát hiện trap/packer
-  estimate.py            cost model -> số giây
-  report.py              human / JSON
-  ai.py                  --ai: đo thật bằng model (pack có code) + phân loại lỗi
-  compare.py             original vs protected: delta + finding thay đổi
-cli/trapkey.py           protect / verify / info / compare
-server/                  license server (add-on)
-sdk/                     SDK licensing (Windows)
-docs/SPEC.md             spec license server
-docs/CALIBRATION.md      công thức + cách calibrate con số
-docs/ROADMAP.md          30 ngày + kill criteria
-tests/test_scan.py       test scanner
-```
+## Docs
+
+- [`docs/CALIBRATION.md`](docs/CALIBRATION.md) — Cost model formula, constants, calibration methodology
+- [`docs/WEB_PLAN.md`](docs/WEB_PLAN.md) — Web architecture, API, credit system, security
+- [`docs/SPEC.md`](docs/SPEC.md) — License server specification
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — Development roadmap
+- [`AGENTS.md`](AGENTS.md) — AI agent context (for LLM-assisted development)
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 
-Proprietary. © 2026.
+MIT — see [`LICENSE`](LICENSE).
+
+## Disclaimer
+
+TrapKey measures AI reverse-engineering resistance using cost models and live AI measurements. It does **not** guarantee protection against all attacks. The crack simulation is for defensive testing only — use it to find and fix weaknesses in your own software.

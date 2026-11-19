@@ -343,6 +343,23 @@ test('landing interactive preview switcher and demoPage render all 4 scenarios c
   assert.doesNotMatch(enDemo, /AI mạnh nhất/);
 });
 
+test('localized X-Ray showcase, no duplicated delta table rows, and clean CSS', () => {
+  const viLanding = views.landing({ lang: 'vi', currentPath: '/' });
+  assert.match(viLanding, /class="xray-plain"/);
+  assert.doesNotMatch(viLanding, /FAILED — chased decoy traps/);
+  assert.doesNotMatch(viLanding, /2 bytes · verified/);
+
+  const cmpDemo = views.demoPage({ sample: 'compare', lang: 'vi', currentPath: '/demo?sample=compare' });
+  assert.match(cmpDemo, /class="delta-strip"/);
+  assert.doesNotMatch(cmpDemo, /Δ crack \(best\)/);
+
+  const css = fs.readFileSync(path.join(__dirname, '..', 'web', 'static', 'app.css'), 'utf8');
+  assert.match(css, /label\.mode-pill:has\(input:disabled\)/);
+  assert.match(css, /:root\[data-theme="light"\]/);
+  assert.doesNotMatch(css, /\.hero-preview\b|\.terminal-bar\b|\.stats-strip\b/);
+  assert.match(viLanding, /id="themeToggle"/);
+});
+
 let failed = 0;
 for (const t of tests) {
   try {

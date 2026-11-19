@@ -67,6 +67,12 @@ const ICON_MENU =
   '<line class="line line-2" x1="4" y1="12" x2="20" y2="12"/>' +
   '<line class="line line-3" x1="4" y1="16" x2="20" y2="16"/></svg>';
 
+const ICON_THEME =
+  '<svg class="theme-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>' +
+  '<svg class="theme-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
 /* ------------------------------- layout -------------------------------- */
 
 function layout({
@@ -129,6 +135,7 @@ function layout({
 <meta property="og:type" content="website">
 <link rel="stylesheet" href="${assetUrl('app.css')}">
 <link rel="icon" href="${FAVICON}">
+<script>(function(){try{var s=localStorage.getItem('tk_theme');var t=(s==='light'||s==='dark')?s:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 </head>
 <body class="${bodyClass}">
 <div class="scroll-rail" id="scrollRail" aria-hidden="true"></div>
@@ -138,6 +145,7 @@ function layout({
     <a class="brand" href="/"><span class="brand-dot" aria-hidden="true"></span>TrapKey</a>
     <nav class="nav-links" aria-label="Primary">${navHtml}</nav>
     <div class="nav-right">
+      <button class="theme-btn" id="themeToggle" type="button" aria-label="${esc(t(L, 'themeToggle'))}" aria-pressed="false">${ICON_THEME}</button>
       ${langMenu}
       ${account
         ? `<span class="who">${esc(account.email)}</span><a class="btn ${active === 'app' ? '' : 'ghost'} sm nav-auth" href="/app">${esc(t(L, 'navDashboard'))}</a><a class="btn ghost sm nav-settings" href="/app/settings">${esc(t(L, 'navSettings'))}</a>`
@@ -204,9 +212,10 @@ function landing({ lang = 'vi', currentPath = '/' } = {}) {
             <div class="scan-beam" aria-hidden="true"></div>
             <div class="byte-label">LicenseService::CheckLicenseKey</div>
             <div class="byte-cells"><span class="bcell flip">2D</span><span class="bcell flip">0C</span><span class="bcell">→</span><span class="bcell flip">2C</span><span class="bcell flip">0C</span></div>
-            <div class="byte-tag">2 bytes · verified</div>
+            <div class="byte-tag">${esc(t(L, 'xrayBeforeBadge'))}</div>
           </div>
-          <div class="xray-chips"><span class="xchip bad">-25 CheckLicenseKey</span><span class="xchip bad">-18 Readable .NET IL</span></div>
+          <div class="xray-chips"><span class="xchip bad">${esc(t(L, 'xrayBeforeChip1'))}</span><span class="xchip bad">${esc(t(L, 'xrayBeforeChip2'))}</span></div>
+          <p class="xray-plain">${esc(t(L, 'demoBeforePlain'))}</p>
         </div>
         <div class="xray-panel" data-demo-panel="after" hidden>
           <div class="xray-metrics">
@@ -216,10 +225,11 @@ function landing({ lang = 'vi', currentPath = '/' } = {}) {
             <svg class="xray-ring" width="44" height="44" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--surface-2, #171920)" stroke-width="3"/><circle cx="18" cy="18" r="16" fill="none" stroke="var(--ok, #10b981)" stroke-width="3" stroke-dasharray="100.5" stroke-dashoffset="${100.5 * (1 - 0.34)}" transform="rotate(-90 18 18)"/></svg>
           </div>
           <div class="decoy-mesh">
-            <div class="decoy-label">FAILED — chased decoy traps, no verified patch</div>
+            <div class="decoy-label">${esc(t(L, 'xrayAfterResult'))}</div>
             <div class="decoy-nodes">${Array.from({length: 14}, (_, i) => `<span class="dnode">#${String(i + 1).padStart(2, '0')}</span>`).join('')}</div>
           </div>
-          <div class="xray-chips"><span class="xchip ok">+24 Decoy Kit (14 traps)</span><span class="xchip ok">+15 Symbols Stripped</span></div>
+          <div class="xray-chips"><span class="xchip ok">${esc(t(L, 'xrayAfterChip1'))}</span><span class="xchip ok">${esc(t(L, 'xrayAfterChip2'))}</span></div>
+          <p class="xray-plain">${esc(t(L, 'demoAfterPlain'))}</p>
         </div>
         <div class="xray-foot">
           <span class="caption-5 muted">InvoicePro.exe vs InvoicePro.protected.exe</span>
@@ -230,8 +240,16 @@ function landing({ lang = 'vi', currentPath = '/' } = {}) {
   </div>
   <div class="hero-hud">
     <div class="hud-pillars">${esc(t(L, 'landingProof'))}</div>
-    <div class="hud-stats"><span class="hud-stat"><strong data-count="260" data-suffix="+">260+</strong> tests</span><span class="hud-stat"><strong data-count="12">12</strong> langs</span><span class="hud-stat"><strong>0</strong> deps</span></div>
+    <div class="hud-stats"><span class="hud-stat"><strong data-count="260" data-suffix="+">260+</strong> ${esc(t(L, 'hudTestsLabel'))}</span><span class="hud-stat"><strong data-count="12">12</strong> ${esc(t(L, 'hudLangsLabel'))}</span><span class="hud-stat"><strong>0</strong> ${esc(t(L, 'hudDepsLabel'))}</span></div>
     <div class="hud-scroll"><span class="hud-scroll-label">SCROLL</span><span class="hud-scroll-track"><span id="hudScrollFill"></span></span><span class="hud-scroll-pct" id="scrollPct">0%</span></div>
+  </div>
+</section>
+
+<section class="section reveal-block">
+  <div class="card wide">
+    <div class="step">${esc(t(L, 'problemKicker'))}</div>
+    <h2 class="heading-5">${esc(t(L, 'problemTitle'))}</h2>
+    <p class="body-3 muted" style="margin-bottom:0">${esc(t(L, 'problemBody'))}</p>
   </div>
 </section>
 
@@ -268,8 +286,8 @@ function landing({ lang = 'vi', currentPath = '/' } = {}) {
 
 <section class="pipeline-section section reveal-block">
   <div class="step">${esc(t(L, 'howKicker'))}</div>
-  <h2 class="heading-4" style="margin-bottom:var(--s-300)">${esc(t(L, 'howTitle'))}</h2>
-  <p class="muted" style="max-width:640px">${esc(t(L, 'problemTitle'))}</p>
+  <h2 class="heading-4" style="margin-bottom:var(--s-100)">${esc(t(L, 'howTitle'))}</h2>
+  <p class="muted" style="max-width:640px">${esc(t(L, 'howSubtitle'))}</p>
   <div class="pipeline-track">
     <div class="pipe-node card">
       <div class="step">STEP 01</div>
@@ -873,13 +891,10 @@ function compareResultHtml(result, lang = 'vi') {
       <div class="delta-tile"><span class="delta-val">${result.delta.p_success >= 0 ? '+' : ''}${result.delta.p_success}</span><span class="delta-key">P(success)</span></div>
       <div class="delta-tile"><span class="delta-val">${result.delta.risk >= 0 ? '+' : ''}${result.delta.risk}</span><span class="delta-key">Risk</span></div>
     </div>
-    <table class="kv">
-      <tr><td>Δ crack (best)</td><td>${result.delta.seconds_best >= 0 ? '+' : ''}${result.delta.seconds_best}s</td></tr>
-      <tr><td>Δ p_success</td><td>${result.delta.p_success >= 0 ? '+' : ''}${result.delta.p_success}</td></tr>
-      <tr><td>Δ risk</td><td>${result.delta.risk >= 0 ? '+' : ''}${result.delta.risk}</td></tr>
-      ${result.ai ? `<tr><td>Δ AI measured</td><td>${result.ai.delta_seconds >= 0 ? '+' : ''}${result.ai.delta_seconds}s · ${esc(result.ai.model || '')}</td></tr>` : ''}
-      ${result.ai ? `<tr><td>AI verdict</td><td>${esc(result.ai.verdict)}</td></tr>` : ''}
-    </table>
+    ${result.ai ? `<table class="kv" style="margin-bottom:var(--s-300)">
+      <tr><td>Δ AI measured</td><td>${result.ai.delta_seconds >= 0 ? '+' : ''}${result.ai.delta_seconds}s · ${esc(result.ai.model || '')}</td></tr>
+      <tr><td>AI verdict</td><td>${esc(result.ai.verdict)}</td></tr>
+    </table>` : ''}
     <h3>${esc(t(L, 'compareFixed'))}</h3>
     ${result.fixed_findings.length ? `<ul class="findings">${findingRows(result.fixed_findings, 'fixed')}</ul>` : `<p class="muted">${esc(t(L, 'compareNoFixed'))}</p>`}
     <h3>${esc(t(L, 'compareNew'))}</h3>
