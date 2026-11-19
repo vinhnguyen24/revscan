@@ -1,4 +1,4 @@
-# Web plan — TrapKey SaaS
+# Web plan — RevScan SaaS
 
 Status: approved plan, implemented in `web/`. Every milestone below has an
 acceptance check that can be run.
@@ -143,7 +143,7 @@ Free. Webhook handling is idempotent (`events.id` = provider event id).
 
 ```
 web/server.js            node, zero deps, listens on 127.0.0.1:7200
-systemd unit             deploy/trapkey-web.service
+systemd unit             deploy/revscan-web.service
 nginx                    deploy/nginx.conf  (TLS terminated outside, no app TLS)
 data                     DATA_DIR (sqlite + outbox), backed up daily
 ```

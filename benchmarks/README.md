@@ -68,7 +68,7 @@ Exit code:
   mới đúng. Mặc định `allow_none = (expect == [])`, nên viết `"X.exe": []` cũng
   được hiểu là "không có license".
 - Nhãn phải là ground truth đã kiểm tra tay (dnSpy/ILSpy cho .NET, IDA/Ghidra/x64dbg
-  cho native). **Không** lấy output của TrapKey làm nhãn — đó là circular.
+  cho native). **Không** lấy output của RevScan làm nhãn — đó là circular.
 - `benchmarks/labels.example.json` chỉ minh hoạ **định dạng**, không phải kết quả
   của bất kỳ binary thật nào.
 
@@ -173,7 +173,7 @@ relative path (lowercase) để kết quả Ổn định, rồi mới cắt `--l
 ## 7. Test
 
 ```bash
-cd /path/to/trapkey
+cd /path/to/revscan
 python3 tests/test_benchmark.py
 ```
 

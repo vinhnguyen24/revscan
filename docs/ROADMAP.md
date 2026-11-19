@@ -1,4 +1,4 @@
-# TrapKey — Roadmap v2 (cập nhật 2026-11-18)
+# RevScan — Roadmap v2 (cập nhật 2026-11-18)
 
 > Thay thế roadmap v1 (30 ngày). Pivot: từ "scan + subscription $29/tháng" sang
 > "crack simulation + one-time audit + decoy kit". Lý do: xem review 2026-11-18.
@@ -62,7 +62,7 @@ Tổng: **217 test pass**, zero npm dependency.
   - `NoInlining` + real xrefs từ startup (`Warmup`)
   - Multi-point check API: `TrapKeyDecoy.Verify(key, slice)` ở ≥5 nơi
   - Delayed check (`ScheduleDelayedCheck` async verify sau 1–5 phút random)
-- [x] `trapkey_decoy.h` — tương đương cho C/C++ (header-only)
+- [x] `revscan_decoy.h` — tương đương cho C/C++ (header-only)
 - [x] Scanner nhận diện decoy coverage: đếm số fake function + check points (`il.call_tokens`) + delayed check
 - [x] Compare report đo hiệu quả: scan trước/sau integrate Decoy Kit (compile thật bằng `csc.exe`)
 
@@ -77,7 +77,7 @@ Tổng: **217 test pass**, zero npm dependency.
 
 - [x] Fix `BCryptVerifySignature` padding info (C++ SDK)
 - [x] JSON escaping key input (C++ SDK)
-- [x] Cảnh báo Authenticode khi `protect` (pe.py / trapkey.py)
+- [x] Cảnh báo Authenticode khi `protect` (pe.py / revscan.py)
 - [x] Sửa privacy statement `--ai` (views.js)
 
 ## P3: Marketing (tuần 4+)

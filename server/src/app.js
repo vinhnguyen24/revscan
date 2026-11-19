@@ -451,13 +451,13 @@ function createApp(options = {}) {
 
       return await matched.handler(req, res, body, url, params);
     } catch (err) {
-      console.error('[trapkey] unhandled:', err);
+      console.error('[revscan] unhandled:', err);
       if (!res.headersSent) return fail(res, 500, 'INTERNAL', 'internal error');
       return res.end();
     }
   });
 
-  server.trapkey = { store, adminKey, dataFile: store.file };
+  server.revscan = { store, adminKey, dataFile: store.file };
   return server;
 }
 

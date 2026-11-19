@@ -1,6 +1,6 @@
 """Minimal PE reader / payload injector.
 
-Only what TrapKey needs: read the section table and append a data blob without
+Only what RevScan needs: read the section table and append a data blob without
 changing program behaviour. Supports PE32 and PE32+.
 
 Injection strategy

@@ -1,4 +1,4 @@
-# TrapKey C++ SDK
+# RevScan C++ SDK
 
 Windows x64, C++17, **no third-party dependencies** (CNG + WinHTTP, both ship with Windows).
 
@@ -10,15 +10,15 @@ cd sdk\cpp
 build.bat
 ```
 
-Output: `build\TrapKey.dll`, `build\TrapKey.lib`, `build\sample.exe`.
+Output: `build\RevScan.dll`, `build\RevScan.lib`, `build\sample.exe`.
 
-Static linking instead of a DLL: compile `trapkey.cpp` directly into your project
+Static linking instead of a DLL: compile `revscan.cpp` directly into your project
 (no `TK_BUILD_DLL`, no `TK_USE_DLL`) and link `bcrypt.lib winhttp.lib advapi32.lib`.
 
 ## Integrate (3 calls)
 
 ```c
-#include "trapkey.h"
+#include "revscan.h"
 
 TK_Init("prd_xxxxxxxx", verifyKey_n, "010001", "https://license.yourdomain.com");
 
@@ -40,8 +40,8 @@ for the real state. A return value other than `TK_OK` means the *arguments* are 
 
 | Path | Content |
 |---|---|
-| `%APPDATA%\TrapKey\<productId>.lic` | signed licence blob (no secret material) |
-| `%APPDATA%\TrapKey\hwid.txt` | fallback machine id, only if `MachineGuid` is unreadable |
+| `%APPDATA%\RevScan\<productId>.lic` | signed licence blob (no secret material) |
+| `%APPDATA%\RevScan\hwid.txt` | fallback machine id, only if `MachineGuid` is unreadable |
 
 Deleting them logs the machine out; the server still counts the seat until
 `TK_Deactivate` or an admin revoke.
@@ -53,10 +53,10 @@ Do not call `TK_Refresh()` from inside `DllMain`.
 
 ## Publishing checklist
 
-- [ ] Ship `TrapKey.dll` next to the exe (or link statically).
+- [ ] Ship `RevScan.dll` next to the exe (or link statically).
 - [ ] Never ship `verifyKey.n` in plaintext **only** — that's fine, it's public. Never
       ship the *private* key (it stays on the server).
-- [ ] Run `trapkey protect YourApp.exe --level 2` as the last build step.
+- [ ] Run `revscan protect YourApp.exe --level 2` as the last build step.
 - [ ] Call `TK_IsLicensed()` at the feature gate, not just at startup.
 - [ ] Test the "revoked while running" flow: revoke in the dashboard, then `TK_Refresh()`.
 

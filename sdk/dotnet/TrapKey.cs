@@ -1,16 +1,16 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace TrapKey
+namespace RevScan
 {
     /// <summary>
-    /// Managed wrapper over TrapKey.dll (see sdk/cpp/trapkey.h).
-    /// Keep <c>TrapKey.dll</c> next to your exe, or embed it as a resource and
+    /// Managed wrapper over RevScan.dll (see sdk/cpp/revscan.h).
+    /// Keep <c>RevScan.dll</c> next to your exe, or embed it as a resource and
     /// extract on first run.
     /// </summary>
     public static class Native
     {
-        private const string Dll = "TrapKey.dll";
+        private const string Dll = "RevScan.dll";
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
         public static extern int TK_Init(
@@ -60,14 +60,14 @@ namespace TrapKey
         Internal = 11
     }
 
-    public sealed class TrapKeyLicense
+    public sealed class RevScanLicense
     {
         public string ProductId { get; }
         public string ModulusB64Url { get; }
         public string ExponentHex { get; }
         public string ServerUrl { get; }
 
-        public TrapKeyLicense(string productId, string modulusB64Url, string exponentHex = "010001",
+        public RevScanLicense(string productId, string modulusB64Url, string exponentHex = "010001",
                               string serverUrl = null)
         {
             ProductId = productId ?? throw new ArgumentNullException(nameof(productId));

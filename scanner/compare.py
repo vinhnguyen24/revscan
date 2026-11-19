@@ -599,7 +599,7 @@ def render(result: dict) -> str:
     delta = result["delta"]
     width = 72
     lines = [
-        "TrapKey compare — original vs protected",
+        "RevScan compare — original vs protected",
         "─" * width,
     ]
     lines += _side_lines("original", result["original"])

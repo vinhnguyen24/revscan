@@ -1,5 +1,5 @@
 /*
- * TrapKey Decoy Kit - header-only C++17 protection layer (Windows, zero deps)
+ * RevScan Decoy Kit - header-only C++17 protection layer (Windows, zero deps)
  *
  * Why this exists: a single TK_IsLicensed() call site is trivial for an AI
  * reverse-engineering agent to locate and patch. Include this header to add:
@@ -34,7 +34,7 @@
 #  define TK_DECOY_BUILD_SEED 0x5A7C9E31u
 #endif
 
-namespace trapkey_decoy {
+namespace revscan_decoy {
 
 inline std::atomic<uint32_t>& verified_mask_ref() {
     static std::atomic<uint32_t> mask{0};
@@ -234,6 +234,6 @@ inline void schedule_delayed_check(
     }).detach();
 }
 
-} // namespace trapkey_decoy
+} // namespace revscan_decoy
 
 #endif /* TRAPKEY_DECOY_H */

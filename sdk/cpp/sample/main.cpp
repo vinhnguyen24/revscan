@@ -2,9 +2,9 @@
 #include <cstdio>
 #include <cstring>
 
-#include "trapkey.h"
+#include "revscan.h"
 
-// ---- values copied from the TrapKey dashboard (Products -> verifyKey) ----
+// ---- values copied from the RevScan dashboard (Products -> verifyKey) ----
 static const char* kProductId = "prd_REPLACE_ME";
 static const char* kModulus   = "REPLACE_WITH_verifyKey_n";
 static const char* kExponent  = "010001";

@@ -282,7 +282,7 @@ def _post_sse(url, body, headers, timeout):
 
 
 def _call_openai(cfg: dict, pack: str, timeout: int) -> tuple[str, dict]:
-    headers = {"content-type": "application/json", "user-agent": "trapkey/1.0"}
+    headers = {"content-type": "application/json", "user-agent": "revscan/1.0"}
     # OpenCode Go gates on client identity/session: a default Python-urllib UA
     # gets Cloudflare 403/1010 even with a valid key. One scan = one session.
     if "opencode.ai/inference/go" in cfg["base"]:
@@ -929,7 +929,7 @@ def _call_round2(
     # thinking tokens before emitting the structured patch.
     budget_tokens = max(token_budget(), 2000)
     if cfg["style"] == "openai":
-        headers = {"content-type": "application/json", "user-agent": "trapkey/1.0"}
+        headers = {"content-type": "application/json", "user-agent": "revscan/1.0"}
         if "opencode.ai/inference/go" in cfg["base"]:
             headers["x-opencode-session"] = os.urandom(16).hex()
         if not cfg["local"] or cfg["key"] != "local":

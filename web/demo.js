@@ -138,7 +138,7 @@ const COPY = {
         },
         {
           detail: 'Chỉ kiểm tra bản quyền tại 1 chỗ duy nhất khi mở ứng dụng — sửa 1 lần là mở toàn bộ app',
-          fix: 'Dùng TrapKey Decoy Kit để rải kiểm tra đa điểm kèm các hàm mồi đánh lạc hướng.',
+          fix: 'Dùng RevScan Decoy Kit để rải kiểm tra đa điểm kèm các hàm mồi đánh lạc hướng.',
         },
       ],
     },
@@ -160,14 +160,14 @@ const COPY = {
         },
         {
           detail: 'File bị sửa byte vẫn chạy bình thường, không có kiểm tra toàn vẹn',
-          fix: 'Thêm kiểm tra checksum / chữ ký nội bộ và rải các hàm bẫy TrapKey Decoy Kit.',
+          fix: 'Thêm kiểm tra checksum / chữ ký nội bộ và rải các hàm bẫy RevScan Decoy Kit.',
         },
       ],
     },
     protected: {
       notes: [
         'Tên hàm đã được làm mờ — không còn tên gợi ý như CheckLicense',
-        'Phát hiện 14 hàm mồi TrapKey Decoy tại 4 luồng thực thi khác nhau',
+        'Phát hiện 14 hàm mồi RevScan Decoy tại 4 luồng thực thi khác nhau',
         'AI thử đoán nhầm vào hàm mồi, không xác minh được bản patch hoạt động',
       ],
       reason: 'AI đoán nhầm vào hàm mồi đánh lạc hướng và không tạo được bản patch hợp lệ.',
@@ -177,7 +177,7 @@ const COPY = {
           fix: 'Có thể bọc thêm native packing nếu cần nâng độ khó lên mức rất cao.',
         },
         {
-          detail: 'Đã gắn TrapKey Decoy Kit: 14 hàm bẫy + kiểm tra đa điểm làm AI tốn nhiều vòng thử sai',
+          detail: 'Đã gắn RevScan Decoy Kit: 14 hàm bẫy + kiểm tra đa điểm làm AI tốn nhiều vòng thử sai',
           fix: '',
         },
         {
@@ -221,7 +221,7 @@ const COPY = {
         },
         {
           detail: 'Single validation point at startup — patching one branch unlocks the entire app',
-          fix: 'Use TrapKey Decoy Kit to spread multi-point checks alongside decoy trap functions.',
+          fix: 'Use RevScan Decoy Kit to spread multi-point checks alongside decoy trap functions.',
         },
       ],
     },
@@ -243,14 +243,14 @@ const COPY = {
         },
         {
           detail: 'Binary continues running normally after byte patches (no tamper check)',
-          fix: 'Add self-checksum verification and embed TrapKey Decoy Kit traps.',
+          fix: 'Add self-checksum verification and embed RevScan Decoy Kit traps.',
         },
       ],
     },
     protected: {
       notes: [
         'Symbol names are hidden — no obvious CheckLicense hints remain',
-        'Detected 14 TrapKey Decoy functions spread across 4 execution paths',
+        'Detected 14 RevScan Decoy functions spread across 4 execution paths',
         'AI chased decoy paths and failed to verify a working bypass patch',
       ],
       reason: 'AI targeted decoy trap functions and failed to produce a verified bypass patch.',
@@ -260,7 +260,7 @@ const COPY = {
           fix: 'Optional native packing can raise difficulty further if needed.',
         },
         {
-          detail: 'TrapKey Decoy Kit active: 14 decoy functions + multi-point validation slow AI guesses',
+          detail: 'RevScan Decoy Kit active: 14 decoy functions + multi-point validation slow AI guesses',
           fix: '',
         },
         {

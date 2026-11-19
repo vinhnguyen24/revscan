@@ -1,4 +1,4 @@
-"""TrapKey scan engine.
+"""RevScan scan engine.
 
     from scanner import scan
     result = scan("App.exe")

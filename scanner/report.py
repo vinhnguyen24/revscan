@@ -69,7 +69,7 @@ def to_dict(ev: Evidence, est: Estimate) -> dict:
 def render(ev: Evidence, est: Estimate) -> str:
     lines: list[str] = []
     w = 72
-    lines.append(f"TrapKey scan — {ev.path}")
+    lines.append(f"RevScan scan — {ev.path}")
     lines.append(f"{ev.kind} · {ev.size:,} bytes · sha256 {ev.sha256[:16]}…")
     lines.append("─" * w)
     risk = risk_score(est.best, est.p_success)

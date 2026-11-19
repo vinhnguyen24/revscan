@@ -231,7 +231,7 @@ def _extract_strings(data: bytes, limit: int = 60_000) -> list[str]:
 
 
 def _detect_decoy_kit(ev: Evidence, data: bytes, joined: str) -> dict | None:
-    """Detect source-level TrapKey Decoy Kit coverage (.NET IL or native)."""
+    """Detect source-level RevScan Decoy Kit coverage (.NET IL or native)."""
     if ev.dotnet and ev.dotnet.ok:
         from .il import call_tokens
 
@@ -308,7 +308,7 @@ def _detect_decoy_kit(ev: Evidence, data: bytes, joined: str) -> dict | None:
         }
 
     # Native PE detection: TK_DECOY_V1 marker / exported or embedded decoy symbols.
-    has_marker = b"TK_DECOY_V1" in data or "trapkey_decoy" in joined
+    has_marker = b"TK_DECOY_V1" in data or "revscan_decoy" in joined
     exports = set(ev.pe.exports()) if ev.pe else set()
     export_blob = "\n".join(exports)
     native_hits = {
@@ -484,7 +484,7 @@ def _findings(ev: Evidence, joined: str) -> None:
             ev.add(
                 "decoy-kit",
                 weight,
-                f"TrapKey Decoy Kit active ({', '.join(parts)})",
+                f"RevScan Decoy Kit active ({', '.join(parts)})",
                 "keep decoys wired to startup and rotate BuildSeed per release",
                 severity="protection",
             )

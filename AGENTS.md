@@ -1,4 +1,4 @@
-# AGENTS.md — TrapKey
+# AGENTS.md — RevScan
 
 > Ngữ cảnh master. Đọc file này trước khi mở code. Trạng thái phiên gần nhất:
 > `docs/HANDOFF_2026-11-16.md`. Quyết định kỹ thuật: `docs/CALIBRATION.md`, `docs/WEB_PLAN.md`.
@@ -9,7 +9,7 @@ Cập nhật: 2026-11-18.
 
 ## 1. Sản phẩm là gì (và không là gì)
 
-**TrapKey trả lời một câu hỏi duy nhất:**
+**RevScan trả lời một câu hỏi duy nhất:**
 
 > Một AI reverse-engineering agent (REA) mất bao nhiêu giây để crack app Windows
 > này — và đây là bằng chứng: code bị lộ, patch cụ thể, mọi thứ.
@@ -37,12 +37,12 @@ tier quá đủ cho indie dev → churn >70%. Bán one-time audit + annual CI th
 | `calibrate.py` | ✅ 18 test |
 | `web/` (SaaS) | ✅ 57 test (48 e2e + 9 UI/i18n) |
 | `server/` (license, add-on) | ✅ 16 test |
-| `cli/trapkey.py protect` | ✅ 15 test, chạy trên PE thật |
-| `cli/trapkey.py compare` | ✅ 29 test, protect → rescan → diff (+ `--ai`) |
+| `cli/revscan.py protect` | ✅ 15 test, chạy trên PE thật |
+| `cli/revscan.py compare` | ✅ 29 test, protect → rescan → diff (+ `--ai`) |
 | `scanner/il.py` + `scanner/native.py` | ✅ 14 test, IL + objdump xref trong evidence pack |
 | `benchmark.py` | ✅ 46 test, ground-truth harness (static + AI) |
 | `sdk/cpp` + `sdk/dotnet` | ⚠️ `TrapKeyDecoy.cs` đã compile & test thật (`csc.exe`); `sdk/cpp` chưa compile (không có MSVC) |
-| `Decoy Kit` (`TrapKeyDecoy.cs` + `trapkey_decoy.h` + scanner) | ✅ 4 test (compile + run + scan + compare trên `.exe` thật) |
+| `Decoy Kit` (`TrapKeyDecoy.cs` + `revscan_decoy.h` + scanner) | ✅ 4 test (compile + run + scan + compare trên `.exe` thật) |
 | `--ai` với model thật | ✅ Mặc định OpenCode Go `gpt-6-luna` (~2.5–4.6s/scan, $0.10/$0.50 per 1M, **k=1.2673**); `deepseek-v4.1-flash` mạnh hơn cho native; Gemini 3.1-lite/3.6/3.8 là fallback; native vẫn yếu |
 | `--ai` crack simulation (Round 2) | ✅ 20 test, Round 2 prompt + verify patch + report render |
 
@@ -76,7 +76,7 @@ web/
   views.js              server-rendered HTML (không framework, không build)
   static/app.css,scan.js
 
-cli/trapkey.py          protect (strip PDB + payload v2) / verify (RSA offline) / info / compare / compare-reports
+cli/revscan.py          protect (strip PDB + payload v2) / verify (RSA offline) / info / compare / compare-reports
 cli/pe.py               3 chiến lược chèn (slack -> new-section -> overlay) + strip_debug
 server/                 license server + admin UI (add-on, zero dep)
 sdk/cpp, sdk/dotnet     SDK licensing (CNG + WinHTTP, không third-party)
@@ -100,12 +100,12 @@ python3 calibrate.py <dir> --limit 20
 TRAPKEY_AI_PROVIDER=ollama python3 calibrate.py <dir> --ai --limit 10
 
 TRAPKEY_CALIBRATION_K=1.7 python3 scan.py App.exe
-python3 cli/trapkey.py protect App.exe --level 3      # strip PDB + payload v2
-python3 cli/trapkey.py protect App.exe --sig feed.sig --pubkey vendor.pem
-python3 cli/trapkey.py info App.protected.exe
-python3 cli/trapkey.py compare App.exe App.protected.exe --json  # before/after diff
-python3 cli/trapkey.py compare App.exe App.protected.exe --ai --repeat 3 --json  # đo thật cả 2 bản
-python3 cli/trapkey.py compare-reports before.json after.json --json  # web /compare dùng lệnh này
+python3 cli/revscan.py protect App.exe --level 3      # strip PDB + payload v2
+python3 cli/revscan.py protect App.exe --sig feed.sig --pubkey vendor.pem
+python3 cli/revscan.py info App.protected.exe
+python3 cli/revscan.py compare App.exe App.protected.exe --json  # before/after diff
+python3 cli/revscan.py compare App.exe App.protected.exe --ai --repeat 3 --json  # đo thật cả 2 bản
+python3 cli/revscan.py compare-reports before.json after.json --json  # web /compare dùng lệnh này
 
 python3 benchmark.py --corpus <dir> --labels labels.json --static
 python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
@@ -257,10 +257,10 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
 - **`compare` phải check magic `MZ` trước `collect()`**: file non-PE 200MB từng bị đọc 2 lần
   + extract strings trước khi báo lỗi (~4.6s, 227MB RSS); giờ đọc 2 byte là đủ.
 - **Sweeper upload/tmp phải chịu được thư mục biến mất**: `readdirSync` ném ENOENT trong
-  timer callback từng làm sập web; test gọi trực tiếp qua `server.trapkey.sweepUploads`.
+  timer callback từng làm sập web; test gọi trực tiếp qua `server.revscan.sweepUploads`.
 - **OpenCode Go chặn UA mặc định của Python**: gọi `opencode.ai/inference/go/openai/v1`
   bằng urllib không set `User-Agent`/`x-opencode-session` trả **403/1010** dù key đúng.
-  `_call_openai` set `trapkey/1.0` + session ngẫu nhiên; token OAuth trong OpenCode DB
+  `_call_openai` set `revscan/1.0` + session ngẫu nhiên; token OAuth trong OpenCode DB
   hết hạn ~26 ngày, production nên dùng API key tạo ở Console → Go.
 - **`compare --ai` không được trộn measured với cost model**: `measured` là 1 round,
   không gồm tool time; để riêng `delta`/`ai` và in “live measurement does not confirm”
@@ -281,10 +281,10 @@ python3 benchmark.py --corpus <dir> --labels labels.json --ai --limit 10
 2. **P0 — Pricing pivot**: ✅ Done (`config.js` Free / Audit Pass $49 / Annual CI $199,
    `credits.js` one-time expiry + unlimited static, `server.js` checkout `mode=payment`,
    `views.js` pricing + free report redaction + UI high-tech + i18n `vi`/`en`).
-3. **P1 — Decoy Kit**: ✅ Done (`sdk/dotnet/TrapKeyDecoy.cs` + `sdk/cpp/trapkey_decoy.h` +
+3. **P1 — Decoy Kit**: ✅ Done (`sdk/dotnet/TrapKeyDecoy.cs` + `sdk/cpp/revscan_decoy.h` +
    `evidence.py`/`estimate.py` decoy coverage & multi-point IL call detection + `test_decoy_kit.py`).
 4. **P2 — Triển khai**: VPS + systemd + nginx + certbot + Stripe ($49 Audit Pass) + Resend.
-5. **P2 — Fix bugs**: ✅ Done (`BCryptVerifySignature` `BCRYPT_PKCS1_PADDING_INFO` + `JsonEscape` trong `sdk/cpp/trapkey.cpp`, Authenticode warning trong `pe.py`/`trapkey.py`, privacy statement trong `views.js`). *(C++ SDK vẫn chưa compile thử trên MSVC.)*
+5. **P2 — Fix bugs**: ✅ Done (`BCryptVerifySignature` `BCRYPT_PKCS1_PADDING_INFO` + `JsonEscape` trong `sdk/cpp/revscan.cpp`, Authenticode warning trong `pe.py`/`revscan.py`, privacy statement trong `views.js`). *(C++ SDK vẫn chưa compile thử trên MSVC.)*
 6. **Re-fit `k`**: đã fit cho default `gpt-6-luna` (OpenCode Go) — **k=1.2673**,
    n=7, spread 2.27x, corpus 7 DLL licensing NuGet + System.Core/Security + WinRAR
    (2026-11-16). DeepSeek V4.1 Flash chưa fit được vì 1200 token bị reasoning ăn hết;

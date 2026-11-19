@@ -12,8 +12,8 @@ where both copies were measured by the same live model.
 - Command:
 
 ```bash
-python3 cli/trapkey.py protect Cryptlex.LexActivator.dll --level 3
-python3 cli/trapkey.py compare Cryptlex.LexActivator.dll Cryptlex.protected.dll \
+python3 cli/revscan.py protect Cryptlex.LexActivator.dll --level 3
+python3 cli/revscan.py compare Cryptlex.LexActivator.dll Cryptlex.protected.dll \
   --ai --repeat 3 --json
 ```
 

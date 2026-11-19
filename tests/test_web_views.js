@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'trapkey-views-'));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'revscan-views-'));
 process.env.DATA_DIR = TMP;
 process.env.ADMIN_KEY = 'test-admin-key';
 

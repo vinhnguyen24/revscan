@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ground-truth benchmark: score TrapKey against labels, not against its own claims.
+"""Ground-truth benchmark: score RevScan against labels, not against its own claims.
 
     python3 benchmark.py --corpus DIR --labels FILE --static
     python3 benchmark.py --corpus DIR --labels FILE --ai
@@ -497,7 +497,7 @@ def _summary_line(label: str, summary: dict) -> str:
 
 def render_human(payload: dict) -> str:
     lines = [
-        "TrapKey ground-truth benchmark",
+        "RevScan ground-truth benchmark",
         f"corpus: {payload['corpus']}",
         f"labels: {payload['labels']}",
         f"modes:  {', '.join(payload['modes'])}",

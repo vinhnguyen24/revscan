@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""TrapKey CLI.
+"""RevScan CLI.
 
-    trapkey protect  <app.exe> --level 2 [--out <file>] [--no-strip]
-    trapkey protect  <app.exe> --sig payloads.sig --pubkey vendor.pem
-    trapkey verify   <license-token> --pem <public.pem>
-    trapkey verify   <license-token> --n <b64url> --e <hex>
-    trapkey info     <app.exe>
-    trapkey compare  <original.exe> <protected.exe> [--json] [--ai [--repeat N]]
+    revscan protect  <app.exe> --level 2 [--out <file>] [--no-strip]
+    revscan protect  <app.exe> --sig payloads.sig --pubkey vendor.pem
+    revscan verify   <license-token> --pem <public.pem>
+    revscan verify   <license-token> --n <b64url> --e <hex>
+    revscan info     <app.exe>
+    revscan compare  <original.exe> <protected.exe> [--json] [--ai [--repeat N]]
 
 `protect` never rebuilds and never needs source. It strips debug/PDB data and
 appends a data section that carries AI-deception payloads. Use `scan.py` for the
@@ -60,11 +60,11 @@ LEVEL_LABELS = {
 # reach it; this costs one round, then feeds the fake source.
 REFERENCE = (
     b"\n\0TK2-REF\0"
-    b"TrapKey payload reference (build tooling)\n"
+    b"RevScan payload reference (build tooling)\n"
     b"  index entry = {u32 offset, u16 length, u16 chunk id}\n"
     b"  mask  = sha256(\"TK2\" + header + index)[0:16]\n"
     b"  seed  = seed_c XOR mask\n"
-    b"  key   = sha256(\"trapkey-v2-chunk\\0\" + seed + le16(id))\n"
+    b"  key   = sha256(\"revscan-v2-chunk\\0\" + seed + le16(id))\n"
     b"  plain = cipher XOR sha256(key + le32(counter)) blocks\n"
     b"  chunk ids 0xFFFE and 0xFFFF are decoys.\n"
 )
@@ -109,7 +109,7 @@ def build_seed(build: bytes, parts: list[bytes]) -> bytes:
     deceived by it. The point is that a regex/signature for one build does not
     match the next.
     """
-    digest = hashlib.sha256(b"trapkey-v2-build\0" + hashlib.sha256(build).digest())
+    digest = hashlib.sha256(b"revscan-v2-build\0" + hashlib.sha256(build).digest())
     for part in parts:
         digest.update(hashlib.sha256(part).digest())
     return digest.digest()[:16]
@@ -125,7 +125,7 @@ def keystream(key: bytes, length: int) -> bytes:
 
 
 def chunk_key(seed: bytes, cid: int) -> bytes:
-    return hashlib.sha256(b"trapkey-v2-chunk\0" + seed + struct.pack("<H", cid)).digest()
+    return hashlib.sha256(b"revscan-v2-chunk\0" + seed + struct.pack("<H", cid)).digest()
 
 
 def crypt(data: bytes, seed: bytes, cid: int) -> bytes:
@@ -144,7 +144,7 @@ def encode_v2(build: bytes, parts: list[bytes], decoys: bool = True, hint: bool 
         marker(5) | version(1) | count(u16) | seed_c(16) | index(count*8) | data
         index entry = offset(u32, from data start) | length(u16) | chunk id(u16)
         mask = sha256("TK2" + header + index)[:16]; seed = seed_c XOR mask
-        key(id) = sha256("trapkey-v2-chunk\\0" + seed + le16(id))
+        key(id) = sha256("revscan-v2-chunk\\0" + seed + le16(id))
 
     With `hint`, a plaintext reference trailer explains the format. The payload
     has to be readable for the deception to land; the hint costs the agent one
@@ -494,7 +494,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------- main
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="trapkey", description="License + anti-AI-crack kit")
+    parser = argparse.ArgumentParser(prog="revscan", description="License + anti-AI-crack kit")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_protect = sub.add_parser("protect", help="inject AI-deception payloads into a PE file")

@@ -87,7 +87,7 @@ very unlikely.
 |---|---|---|---|---|
 | `notepad.exe` (no licence logic) | native | ~72 s | 0.35 | nothing points at a licence check; "unlikely" is the honest answer |
 | `notepad.exe` + injected licence strings | native | ~61 s | 0.85 | strings narrow the search; Ghidra import dominates |
-| same, `trapkey protect --level 3` (v2: strip + chunked payload) | native | ~71 s | 0.55 | traps add a round and cut success by 0.30; PDB gone |
+| same, `revscan protect --level 3` (v2: strip + chunked payload) | native | ~71 s | 0.55 | traps add a round and cut success by 0.30; PDB gone |
 | `mscorlib.dll` (27.492 methods) | .NET | ~48 s | 0.90 | metadata dump gives the whole name table |
 | `WindowsCodecsRaw.dll` (32 MB) | native | ~1.8 min | 0.70 | tool-time scaling with binary size |
 | `amd_comgr_2.dll` (110 MB) | native | ~2.5 min | 0.70 | sift budget grows sub-linearly, capped at 200k tokens |

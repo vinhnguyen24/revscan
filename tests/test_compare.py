@@ -1,4 +1,4 @@
-"""Tests for `trapkey compare` — the protect -> rescan -> diff loop.
+"""Tests for `revscan compare` — the protect -> rescan -> diff loop.
 
     python3 tests/test_compare.py
 
@@ -49,7 +49,7 @@ NOTEPAD = _find_binary("notepad.exe", "TRAPKEY_TEST_EXE")
 
 def run_cli(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(ROOT / "cli" / "trapkey.py"), *args],
+        [sys.executable, str(ROOT / "cli" / "revscan.py"), *args],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -131,7 +131,7 @@ class CompareErrorTests(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "")
 
     def test_invalid_pe_exits_2(self):
-        tmp = Path(tempfile.mkdtemp(prefix="trapkey-compare-bad-"))
+        tmp = Path(tempfile.mkdtemp(prefix="revscan-compare-bad-"))
         try:
             bad = tmp / "not-a-pe.exe"
             bad.write_bytes(b"this is not a PE file")
@@ -149,7 +149,7 @@ class CompareErrorTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_directory_is_not_reported_as_missing(self):
-        with tempfile.TemporaryDirectory(prefix="trapkey-compare-dir-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="revscan-compare-dir-") as tmp:
             proc = run_cli("compare", tmp, tmp)
         self.assertEqual(proc.returncode, 2)
         self.assertIn("is not a file", proc.stderr)
@@ -365,7 +365,7 @@ class CompareReportsTests(unittest.TestCase):
 class CompareCliTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = Path(tempfile.mkdtemp(prefix="trapkey-compare-"))
+        cls.tmp = Path(tempfile.mkdtemp(prefix="revscan-compare-"))
         cls.src = cls.tmp / "app.exe"
         cls.protected = cls.tmp / "app.protected.exe"
         shutil.copy(NOTEPAD, cls.src)

@@ -1,4 +1,4 @@
-# TrapKey — Technical Spec (v0.1)
+# RevScan — Technical Spec (v0.1)
 
 Status: MVP, implemented. Everything below matches `server/`, `cli/`, `sdk/cpp/`.
 
@@ -8,13 +8,13 @@ Status: MVP, implemented. Everything below matches `server/`, `cli/`, `sdk/cpp/`
 
 A vendor integrates three things:
 
-1. **SDK** (`TrapKey.dll` or static lib) — 3 functions:
+1. **SDK** (`RevScan.dll` or static lib) — 3 functions:
    ```c
    TK_Init(productId, verifyKeyN, verifyKeyE);   // once at startup
    TK_IsLicensed();                              // every protected feature gate
    TK_Activate(key);                             // one-time, from a dialog
    ```
-2. **CLI at build time** — `trapkey protect vendor.exe --level 2` (post-build, no source needed).
+2. **CLI at build time** — `revscan protect vendor.exe --level 2` (post-build, no source needed).
 3. **Server** — issues keys, tracks activations, revokes.
 
 The vendor's customer never sees a login page. They paste a key, the app binds to their
@@ -108,7 +108,7 @@ The app may call `POST /v1/validate` on startup when online to pick up revocatio
 
 ```c
 guid = RegRead(HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid)   // primary
-guid = read(%APPDATA%\TrapKey\hwid.txt)                            // fallback
+guid = read(%APPDATA%\RevScan\hwid.txt)                            // fallback
 guid = random(32) and persist                                      // last resort
 hwid = lowercase(hex(sha256(guid + ":" + productId))[0..32])
 ```
@@ -147,7 +147,7 @@ Redis before multi-instance deployment.
 
 ---
 
-## 8. `trapkey protect` — what it actually changes
+## 8. `revscan protect` — what it actually changes
 
 Operates on a PE file after linking; source is not required.
 

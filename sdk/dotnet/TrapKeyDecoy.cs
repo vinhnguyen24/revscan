@@ -2,10 +2,10 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace TrapKey.Decoy
+namespace RevScan.Decoy
 {
     /// <summary>
-    /// TrapKey Decoy Kit for .NET (single-file include, zero third-party deps).
+    /// RevScan Decoy Kit for .NET (single-file include, zero third-party deps).
     ///
     /// Why this exists: a single `CheckLicense()` method is found and patched by
     /// an AI reverse-engineering agent in seconds. Integrating this kit adds:

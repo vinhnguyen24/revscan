@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TrapKey scan — how long until an AI reverse-engineering agent cracks this app?
+"""RevScan scan — how long until an AI reverse-engineering agent cracks this app?
 
     python3 scan.py App.exe
     python3 scan.py App.exe --json

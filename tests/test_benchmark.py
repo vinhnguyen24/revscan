@@ -276,7 +276,7 @@ class AiScoringTests(unittest.TestCase):
 
 class LabelTests(unittest.TestCase):
     def _write(self, payload) -> str:
-        tmp = tempfile.mkdtemp(prefix="trapkey-labels-")
+        tmp = tempfile.mkdtemp(prefix="revscan-labels-")
         self.addCleanup(shutil.rmtree, tmp, True)
         path = Path(tmp) / "labels.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -305,7 +305,7 @@ class LabelTests(unittest.TestCase):
         self.assertTrue(labels["NoLicense.exe"]["allow_none"])
 
     def test_relative_label_does_not_leak_to_other_basenames(self):
-        tmp = Path(tempfile.mkdtemp(prefix="trapkey-labels-rel-"))
+        tmp = Path(tempfile.mkdtemp(prefix="revscan-labels-rel-"))
         self.addCleanup(shutil.rmtree, tmp, True)
         (tmp / "sub").mkdir()
         labels = bm.load_labels(
@@ -321,7 +321,7 @@ class LabelTests(unittest.TestCase):
             bm.load_labels("/nonexistent/does-not-exist.json")
 
     def test_invalid_json(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-labels-bad-")
+        tmp = tempfile.mkdtemp(prefix="revscan-labels-bad-")
         self.addCleanup(shutil.rmtree, tmp, True)
         path = Path(tmp) / "labels.json"
         path.write_text("{not json", encoding="utf-8")
@@ -347,7 +347,7 @@ class LabelTests(unittest.TestCase):
 
 class CorpusTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="trapkey-corpus-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="revscan-corpus-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
         (self.tmp / "sub").mkdir()
         (self.tmp / "a.exe").write_bytes(b"x" * 20_001)
@@ -402,7 +402,7 @@ class BothModesTests(unittest.TestCase):
     """End-to-end main() with a fake model: static + ai rows, one JSON object."""
 
     def test_static_and_ai_json(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-bench-both-")
+        tmp = tempfile.mkdtemp(prefix="revscan-bench-both-")
         self.addCleanup(shutil.rmtree, tmp, True)
         shutil.copy(SYSTEM_DLL, Path(tmp) / "System.dll")
         labels = Path(tmp) / "labels.json"
@@ -463,7 +463,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("--labels", proc.stdout)
 
     def test_missing_labels_exits_two(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-bench-nolabels-")
+        tmp = tempfile.mkdtemp(prefix="revscan-bench-nolabels-")
         self.addCleanup(shutil.rmtree, tmp, True)
         proc = self._run(
             "--corpus", tmp, "--labels", str(Path(tmp) / "missing.json"), "--static"
@@ -471,7 +471,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
     def test_empty_corpus_exits_two(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-bench-empty-")
+        tmp = tempfile.mkdtemp(prefix="revscan-bench-empty-")
         self.addCleanup(shutil.rmtree, tmp, True)
         labels = Path(tmp) / "labels.json"
         labels.write_text(json.dumps({"files": {"App.exe": ["CheckLicense"]}}), encoding="utf-8")
@@ -479,7 +479,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
     def test_no_matching_label_exits_two(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-bench-nomatch-")
+        tmp = tempfile.mkdtemp(prefix="revscan-bench-nomatch-")
         self.addCleanup(shutil.rmtree, tmp, True)
         (Path(tmp) / "Some.exe").write_bytes(b"x" * 21_000)
         labels = Path(tmp) / "labels.json"
@@ -489,7 +489,7 @@ class CliTests(unittest.TestCase):
 
     @unittest.skipUnless(Path(SYSTEM_DLL).exists(), "no System.dll available")
     def test_static_cli_on_real_dotnet_assembly(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-bench-real-")
+        tmp = tempfile.mkdtemp(prefix="revscan-bench-real-")
         self.addCleanup(shutil.rmtree, tmp, True)
         shutil.copy(SYSTEM_DLL, Path(tmp) / "System.dll")
         labels = Path(tmp) / "labels.json"

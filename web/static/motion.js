@@ -1,4 +1,4 @@
-/* TrapKey motion runtime: scroll progress, kinetic reveals, X-Ray tabs, tilt/spotlight, ripples, nav controls. */
+/* RevScan motion runtime: scroll progress, kinetic reveals, X-Ray tabs, tilt/spotlight, ripples, nav controls. */
 (() => {
   'use strict';
   if (typeof window === 'undefined' || typeof document === 'undefined') return;

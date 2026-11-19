@@ -126,7 +126,7 @@ module.exports = {
   devMagicLink,
   root: ROOT,
   dataDir: DATA_DIR,
-  dbFile: path.join(DATA_DIR, 'trapkey.sqlite'),
+  dbFile: path.join(DATA_DIR, 'revscan.sqlite'),
   outboxDir: path.join(DATA_DIR, 'outbox'),
   tmpDir: path.join(DATA_DIR, 'tmp'),
   uploadsDir: path.join(DATA_DIR, 'uploads'),
@@ -148,7 +148,7 @@ module.exports = {
   maxConcurrentScans: Math.max(1, Number(process.env.MAX_CONCURRENT_SCANS || 4)),
 
   engine: path.join(ROOT, 'scan.py'),
-  cli: path.join(ROOT, 'cli', 'trapkey.py'),
+  cli: path.join(ROOT, 'cli', 'revscan.py'),
   // Windows installs `python.exe`; most Unix images only have `python3`.
   python: process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
 

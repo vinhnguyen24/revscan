@@ -1,12 +1,12 @@
-# Contributing to TrapKey
+# Contributing to RevScan
 
 Thanks for your interest! Here's how to get started.
 
 ## Development Setup
 
 ```bash
-git clone https://github.com/vinhnguyen24/trap-key.git
-cd trap-key
+git clone https://github.com/vinhnguyen24/revscan.git
+cd revscan
 cp .env.example .env  # optional: configure AI provider
 
 # Run the scanner

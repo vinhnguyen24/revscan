@@ -1,11 +1,11 @@
 {
-  "name": "trapkey",
+  "name": "revscan",
   "version": "1.0.0",
   "description": "How many seconds until an AI agent cracks your Windows app? Open-source security scanner with cost model, live AI measurement, and crack simulation.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vinhnguyen24/trap-key.git"
+    "url": "https://github.com/vinhnguyen24/revscan.git"
   },
   "keywords": [
     "security",

@@ -12,7 +12,7 @@ const path = require('node:path');
 const { createApp } = require('../src/app');
 const { verifyToken } = require('../src/crypto');
 
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trapkey-'));
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'revscan-'));
 const server = createApp({
   dataFile: path.join(tmpDir, 'data.json'),
   adminKey: 'test-admin-key',
@@ -180,7 +180,7 @@ test('admin UI is served', async () => {
   const res = await fetch(base + '/');
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.ok(html.includes('TrapKey'));
+  assert.ok(html.includes('RevScan'));
 });
 
 /* ------------------------------- runner -------------------------------- */

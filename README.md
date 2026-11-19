@@ -1,13 +1,13 @@
-# TrapKey
+# RevScan
 
 > **How many seconds until an AI agent cracks your Windows app?**
 
-TrapKey is an open-source security scanner that answers one question: *how fast can an AI reverse-engineering agent find and patch the license check in your Windows binary?* It gives you hard numbers, real evidence, and a concrete crack simulation — not vague advice.
+RevScan is an open-source security scanner that answers one question: *how fast can an AI reverse-engineering agent find and patch the license check in your Windows binary?* It gives you hard numbers, real evidence, and a concrete crack simulation — not vague advice.
 
 ```
 $ python scan.py YourApp.exe
 
-TrapKey scan — YourApp.exe
+RevScan scan — YourApp.exe
 dotnet · 4,631,552 bytes · sha256 952703a7…
 ────────────────────────────────────────────────
 → AI cracks this in ~48s (likely, p=0.9) · risk 59/100
@@ -29,7 +29,7 @@ What the agent reads
 
 - **Static scan** — parse PE headers, .NET metadata (ECMA-335), IL bytecode, imports, exports, strings. Zero external dependencies. Runs in <1 second.
 - **AI-measured scan** (`--ai`) — send evidence to a live LLM and measure how many seconds it takes to find the license check. Works with OpenAI, Anthropic, Gemini, Ollama, DeepSeek, or any OpenAI-compatible API.
-- **Crack simulation** — after finding the check, the AI proposes exact patch bytes (`offset 0x2056: 2C → 2D`) and TrapKey verifies the patch is valid.
+- **Crack simulation** — after finding the check, the AI proposes exact patch bytes (`offset 0x2056: 2C → 2D`) and RevScan verifies the patch is valid.
 - **Before/after comparison** — scan your original app and the protected version, see what improved.
 - **CI gate** — `--min-seconds 60` exits with code 1 if an AI could crack your app in under 60 seconds.
 - **Decoy Kit** — drop-in C#/C++ source files that add realistic fake license functions to waste the attacker's time.
@@ -122,7 +122,7 @@ scanner/
   ai.py                  AI provider config + crack simulation + error classification
   compare.py             Original vs protected: delta + finding changes
 
-cli/trapkey.py           protect / verify / info / compare / compare-reports
+cli/revscan.py           protect / verify / info / compare / compare-reports
 web/
   server.js              HTTP, routes, billing, admin, static
   db.js                  SQLite (node:sqlite), schema, transactions, ledger
@@ -134,7 +134,7 @@ web/
   static/                CSS, JS, assets
 
 sdk/dotnet/              TrapKeyDecoy.cs — Decoy Kit for C#
-sdk/cpp/                 trapkey_decoy.h — Decoy Kit for C/C++
+sdk/cpp/                 revscan_decoy.h — Decoy Kit for C/C++
 server/                  License server (optional add-on)
 deploy/                  systemd unit + nginx config
 docs/                    Spec, calibration, case studies, roadmap
@@ -153,14 +153,14 @@ python scan.py App.exe --min-seconds 60         # CI gate (exit 1 if below)
 python scan.py dist/*.exe --json                # Batch scan
 
 # --- Protect ---
-python cli/trapkey.py protect App.exe --level 3        # Strip PDB + encrypted payload + decoy
-python cli/trapkey.py protect App.exe --no-strip       # Keep PDB
-python cli/trapkey.py info App.protected.exe           # Inspect payload/chunks
+python cli/revscan.py protect App.exe --level 3        # Strip PDB + encrypted payload + decoy
+python cli/revscan.py protect App.exe --no-strip       # Keep PDB
+python cli/revscan.py info App.protected.exe           # Inspect payload/chunks
 
 # --- Compare ---
-python cli/trapkey.py compare App.exe App.protected.exe --json
-python cli/trapkey.py compare App.exe App.protected.exe --ai --repeat 3
-python cli/trapkey.py compare-reports before.json after.json --json
+python cli/revscan.py compare App.exe App.protected.exe --json
+python cli/revscan.py compare App.exe App.protected.exe --ai --repeat 3
+python cli/revscan.py compare-reports before.json after.json --json
 
 # --- Calibrate ---
 python calibrate.py /path/to/binaries --limit 20
@@ -208,12 +208,12 @@ TrapKeyDecoy.Verify(licenseKey, 2);  // in ExportPdf
 
 **C/C++:**
 ```c
-#include "trapkey_decoy.h"
-trapkey_decoy_warmup();
-trapkey_decoy_verify(key, 0);
+#include "revscan_decoy.h"
+revscan_decoy_warmup();
+revscan_decoy_verify(key, 0);
 ```
 
-The scanner detects Decoy Kit integration and reports coverage. See [`sdk/dotnet/TrapKeyDecoy.cs`](sdk/dotnet/TrapKeyDecoy.cs) and [`sdk/cpp/trapkey_decoy.h`](sdk/cpp/trapkey_decoy.h).
+The scanner detects Decoy Kit integration and reports coverage. See [`sdk/dotnet/TrapKeyDecoy.cs`](sdk/dotnet/TrapKeyDecoy.cs) and [`sdk/cpp/revscan_decoy.h`](sdk/cpp/revscan_decoy.h).
 
 ## Tests
 
@@ -276,4 +276,4 @@ MIT — see [`LICENSE`](LICENSE).
 
 ## Disclaimer
 
-TrapKey measures AI reverse-engineering resistance using cost models and live AI measurements. It does **not** guarantee protection against all attacks. The crack simulation is for defensive testing only — use it to find and fix weaknesses in your own software.
+RevScan measures AI reverse-engineering resistance using cost models and live AI measurements. It does **not** guarantee protection against all attacks. The crack simulation is for defensive testing only — use it to find and fix weaknesses in your own software.

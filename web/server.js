@@ -173,7 +173,7 @@ function makeLimiter() {
 
 async function sendMagicLink(email, token) {
   const url = `${config.publicUrl}/auth/verify?token=${encodeURIComponent(token)}`;
-  const text = `Đăng nhập TrapKey:\n\n${url}\n\nLink dùng một lần, hết hạn sau ${config.magicLinkMinutes} phút.`;
+  const text = `Đăng nhập RevScan:\n\n${url}\n\nLink dùng một lần, hết hạn sau ${config.magicLinkMinutes} phút.`;
 
   if (process.env.RESEND_API_KEY) {
     try {
@@ -184,9 +184,9 @@ async function sendMagicLink(email, token) {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          from: process.env.MAIL_FROM || 'TrapKey <login@trapkey.dev>',
+          from: process.env.MAIL_FROM || 'RevScan <login@revscan.dev>',
           to: [email],
-          subject: 'Link đăng nhập TrapKey',
+          subject: 'Link đăng nhập RevScan',
           text,
         }),
       });
@@ -405,11 +405,11 @@ function createServer(options = {}) {
       const parts = Object.entries(removed)
         .filter(([, count]) => count > 0)
         .map(([table, count]) => `${table}=${count}`);
-      if (parts.length) console.log(`[trapkey-web] retention cleanup: ${parts.join(' ')}`);
+      if (parts.length) console.log(`[revscan-web] retention cleanup: ${parts.join(' ')}`);
       return removed;
     } catch (err) {
       // A broken sweep must not kill the web process; the next tick retries.
-      console.error(`[trapkey-web] retention cleanup failed: ${err.message}`);
+      console.error(`[revscan-web] retention cleanup failed: ${err.message}`);
       return {};
     }
   };
@@ -419,7 +419,7 @@ function createServer(options = {}) {
 
   if (!config.devMagicLink()) {
     console.warn(
-      '[trapkey-web] production without RESEND_API_KEY: magic links are written to the outbox and cannot be delivered'
+      '[revscan-web] production without RESEND_API_KEY: magic links are written to the outbox and cannot be delivered'
     );
   }
 
@@ -1301,7 +1301,7 @@ function createServer(options = {}) {
           ? fail(res, 400, err.code, err.message || 'upload không hợp lệ')
           : send(res, 400, err.message || 'upload không hợp lệ');
       }
-      console.error('[trapkey-web]', err);
+      console.error('[revscan-web]', err);
       if (res.headersSent) return res.end();
       return pathname.startsWith('/api/')
         ? fail(res, 500, 'INTERNAL', 'internal error')
@@ -1309,7 +1309,7 @@ function createServer(options = {}) {
     }
   });
 
-  server.trapkey = {
+  server.revscan = {
     db,
     config,
     cleanup: (stamp) => runCleanup(stamp),
@@ -1329,7 +1329,7 @@ if (require.main === module) {
   const server = createServer();
   server.listen(config.port, config.host, () => {
     console.log('');
-    console.log('  TrapKey web');
+    console.log('  RevScan web');
     console.log(`  url   : http://${config.host === '0.0.0.0' ? '127.0.0.1' : config.host}:${config.port}`);
     console.log(`  data  : ${config.dataDir}`);
     console.log(`  admin : /app/admin  (key: ADMIN_KEY or ${path.join(config.dataDir, 'admin.key')})`);

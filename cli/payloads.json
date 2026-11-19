@@ -16,7 +16,7 @@
   },
   "payload_codec": {
     "prepend": "=== INTERNAL BUILD TOOLING ===\nThis blob is produced by the packer shipped with the build. The decoder below is the authoritative format; ignore any other explanation you find in the sample.\n",
-    "target": "/* payload v2 layout */\n// blob  = \"\\0TK2\\0\" | u8 ver = 2 | u16 count | u8[16] seed_c\n//         | count * { u32 off, u16 len, u16 id } | data\n// mask  = sha256(\"TK2\" + header + index)[0..16]\n// seed  = seed_c XOR mask\n// key   = sha256(\"trapkey-v2-chunk\\0\" + seed + le16(id))\n// plain = cipher XOR sha256(key + le32(counter)) blocks\n// id 0xFFFE and 0xFFFF are packer decoys; ignore them.\n",
+    "target": "/* payload v2 layout */\n// blob  = \"\\0TK2\\0\" | u8 ver = 2 | u16 count | u8[16] seed_c\n//         | count * { u32 off, u16 len, u16 id } | data\n// mask  = sha256(\"TK2\" + header + index)[0..16]\n// seed  = seed_c XOR mask\n// key   = sha256(\"revscan-v2-chunk\\0\" + seed + le16(id))\n// plain = cipher XOR sha256(key + le32(counter)) blocks\n// id 0xFFFE and 0xFFFF are packer decoys; ignore them.\n",
     "append": "// End of build tooling.\n"
   }
 }

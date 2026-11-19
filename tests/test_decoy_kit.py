@@ -21,7 +21,7 @@ from scanner.evidence import Evidence  # noqa: E402
 from scanner.il import call_tokens  # noqa: E402
 
 DECOY_CS = ROOT / "sdk" / "dotnet" / "TrapKeyDecoy.cs"
-DECOY_H = ROOT / "sdk" / "cpp" / "trapkey_decoy.h"
+DECOY_H = ROOT / "sdk" / "cpp" / "revscan_decoy.h"
 
 
 def _find_csc() -> str | None:
@@ -64,7 +64,7 @@ namespace DemoApp
 
 PROTECTED_CS = """\
 using System;
-using TrapKey.Decoy;
+using RevScan.Decoy;
 
 namespace DemoApp
 {
@@ -103,7 +103,7 @@ namespace DemoApp
 
 WEAK_CS = """\
 using System;
-using TrapKey.Decoy;
+using RevScan.Decoy;
 
 namespace DemoApp
 {

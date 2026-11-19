@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "cli"))
 
-import trapkey  # noqa: E402
+import revscan  # noqa: E402
 from pe import PE  # noqa: E402
 from scanner import collect, estimate  # noqa: E402
 
@@ -52,54 +52,54 @@ except ImportError:  # pragma: no cover - environment-dependent
 
 
 def real_chunks(decoded: dict) -> bytes:
-    return b"".join(c["bytes"] for c in decoded["chunks"] if c["id"] not in trapkey.DECOY_IDS)
+    return b"".join(c["bytes"] for c in decoded["chunks"] if c["id"] not in revscan.DECOY_IDS)
 
 
 class PayloadEncodingTests(unittest.TestCase):
     def test_v2_round_trip(self):
-        blob = trapkey.build_blob(b"build-A", 2, PAYLOADS)
-        decoded = trapkey.decode_blob(blob)
+        blob = revscan.build_blob(b"build-A", 2, PAYLOADS)
+        decoded = revscan.decode_blob(blob)
         text = real_chunks(decoded)
         self.assertIn(b"crc32_table_driven", text)
         self.assertIn(b"payload v2 layout", text)
         self.assertFalse(decoded["decoys"])
 
     def test_plaintext_is_not_in_the_blob(self):
-        blob = trapkey.build_blob(b"build-A", 2, PAYLOADS)
+        blob = revscan.build_blob(b"build-A", 2, PAYLOADS)
         self.assertNotIn(b"crc32_table_driven", blob)
         self.assertNotIn(b"BEGIN RECOVERED SOURCE", blob)
         self.assertNotIn(b"serial validation", blob)
 
     def test_seed_is_per_build(self):
-        a = trapkey.build_blob(b"build-A", 2, PAYLOADS)
-        b = trapkey.build_blob(b"build-B", 2, PAYLOADS)
+        a = revscan.build_blob(b"build-A", 2, PAYLOADS)
+        b = revscan.build_blob(b"build-B", 2, PAYLOADS)
         self.assertNotEqual(a, b)
-        self.assertNotEqual(trapkey.decode_blob(a)["seed"], trapkey.decode_blob(b)["seed"])
+        self.assertNotEqual(revscan.decode_blob(a)["seed"], revscan.decode_blob(b)["seed"])
         # Same build + same payloads -> identical bytes (reproducible builds).
-        self.assertEqual(a, trapkey.build_blob(b"build-A", 2, PAYLOADS))
+        self.assertEqual(a, revscan.build_blob(b"build-A", 2, PAYLOADS))
 
     def test_level3_adds_decoys(self):
-        decoded = trapkey.decode_blob(trapkey.build_blob(b"build-A", 3, PAYLOADS))
+        decoded = revscan.decode_blob(revscan.build_blob(b"build-A", 3, PAYLOADS))
         self.assertTrue(decoded["decoys"])
         ids = {c["id"] for c in decoded["chunks"]}
-        self.assertTrue(set(trapkey.DECOY_IDS) <= ids)
+        self.assertTrue(set(revscan.DECOY_IDS) <= ids)
 
     def test_level3_carries_a_plaintext_reference(self):
         # The agent must be able to reach the decoy; level 3 tells it how.
-        blob = trapkey.build_blob(b"build-A", 3, PAYLOADS)
+        blob = revscan.build_blob(b"build-A", 3, PAYLOADS)
         self.assertIn(b"TK2-REF", blob)
         self.assertIn(b"seed  = seed_c XOR mask", blob)
-        self.assertNotIn(b"TK2-REF", trapkey.build_blob(b"build-A", 2, PAYLOADS))
+        self.assertNotIn(b"TK2-REF", revscan.build_blob(b"build-A", 2, PAYLOADS))
 
     def test_level1_stays_plaintext(self):
-        blob = trapkey.build_blob(b"build-A", 1, PAYLOADS)
-        self.assertTrue(blob.startswith(trapkey.MARKER_V1))
+        blob = revscan.build_blob(b"build-A", 1, PAYLOADS)
+        self.assertTrue(blob.startswith(revscan.MARKER_V1))
         self.assertIn(b"crc32_table_driven", blob)
 
     def test_truncated_blob_is_rejected(self):
-        blob = trapkey.build_blob(b"build-A", 2, PAYLOADS)
+        blob = revscan.build_blob(b"build-A", 2, PAYLOADS)
         with self.assertRaises(ValueError):
-            trapkey.decode_blob(blob[:16])
+            revscan.decode_blob(blob[:16])
 
 
 @unittest.skipUnless(os.path.exists(NOTEPAD), "no Windows binary")
@@ -127,7 +127,7 @@ class StripTests(unittest.TestCase):
 @unittest.skipUnless(os.path.exists(NOTEPAD), "no Windows binary")
 class ProtectCliTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp(prefix="trapkey-protect-")
+        self.tmp = tempfile.mkdtemp(prefix="revscan-protect-")
         self.src = Path(self.tmp) / "app.exe"
         shutil.copy(NOTEPAD, self.src)
 
@@ -136,7 +136,7 @@ class ProtectCliTests(unittest.TestCase):
 
     def run_protect(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [sys.executable, str(ROOT / "cli" / "trapkey.py"), "protect", *args],
+            [sys.executable, str(ROOT / "cli" / "revscan.py"), "protect", *args],
             capture_output=True,
             text=True,
             timeout=180,
@@ -177,7 +177,7 @@ class ProtectCliTests(unittest.TestCase):
 @unittest.skipUnless(HAVE_CRYPTO, "no cryptography")
 class SignedBundleTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="trapkey-sig-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="revscan-sig-"))
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.pubkey = self.tmp / "vendor.pem"
         self.pubkey.write_bytes(
@@ -192,17 +192,17 @@ class SignedBundleTests(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_valid_signature_is_accepted(self):
-        trapkey.verify_payload_bundle(PAYLOADS, self.sig, self.pubkey)
+        revscan.verify_payload_bundle(PAYLOADS, self.sig, self.pubkey)
 
     def test_tampered_bundle_is_refused(self):
         with self.assertRaises(ValueError):
-            trapkey.verify_payload_bundle(PAYLOADS + b" ", self.sig, self.pubkey)
+            revscan.verify_payload_bundle(PAYLOADS + b" ", self.sig, self.pubkey)
 
     def test_missing_pubkey_is_refused(self):
         saved = os.environ.pop("TRAPKEY_PAYLOAD_PUBKEY", None)
         try:
             with self.assertRaises(ValueError):
-                trapkey.verify_payload_bundle(PAYLOADS, self.sig, None)
+                revscan.verify_payload_bundle(PAYLOADS, self.sig, None)
         finally:
             if saved is not None:
                 os.environ["TRAPKEY_PAYLOAD_PUBKEY"] = saved
@@ -213,7 +213,7 @@ class AuthenticodeWarningTests(unittest.TestCase):
     def test_warns_when_protecting_authenticode_signed_pe(self):
         import struct
 
-        tmp = Path(tempfile.mkdtemp(prefix="trapkey-auth-"))
+        tmp = Path(tempfile.mkdtemp(prefix="revscan-auth-"))
         try:
             src = tmp / "signed.exe"
             out = tmp / "signed.protected.exe"
@@ -228,7 +228,7 @@ class AuthenticodeWarningTests(unittest.TestCase):
 
             self.assertTrue(PE(src.read_bytes()).has_authenticode())
             proc = subprocess.run(
-                [sys.executable, str(ROOT / "cli" / "trapkey.py"), "protect", str(src), "--out", str(out)],
+                [sys.executable, str(ROOT / "cli" / "revscan.py"), "protect", str(src), "--out", str(out)],
                 capture_output=True,
                 text=True,
                 check=False,

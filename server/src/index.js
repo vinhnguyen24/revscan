@@ -8,9 +8,9 @@ const host = process.env.HOST || '127.0.0.1';
 const server = createApp();
 server.listen(port, host, () => {
   console.log('');
-  console.log('  TrapKey license server');
+  console.log('  RevScan license server');
   console.log(`  admin UI : http://${host}:${port}`);
-  console.log(`  admin key: ${server.trapkey.adminKey}`);
-  console.log(`  data     : ${server.trapkey.dataFile}`);
+  console.log(`  admin key: ${server.revscan.adminKey}`);
+  console.log(`  data     : ${server.revscan.dataFile}`);
   console.log('');
 });

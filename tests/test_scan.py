@@ -348,7 +348,7 @@ class AIConfigTests(unittest.TestCase):
         finally:
             ai_module._post = saved
         # Go returns Cloudflare 403/1010 for the default Python-urllib UA.
-        self.assertEqual(captured["headers"]["user-agent"], "trapkey/1.0")
+        self.assertEqual(captured["headers"]["user-agent"], "revscan/1.0")
         self.assertIn("x-opencode-session", captured["headers"])
 
     def test_unconfigured_is_an_error(self):

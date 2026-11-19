@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end demo of the TrapKey loop, no external deps.
+"""End-to-end demo of the RevScan loop, no external deps.
 
     python3 demo/demo.py
 
@@ -72,7 +72,7 @@ def verify_locally(token: str, n: str, e: str) -> dict:
 
 
 def main() -> int:
-    data_dir = Path(tempfile.mkdtemp(prefix="trapkey-demo-"))
+    data_dir = Path(tempfile.mkdtemp(prefix="revscan-demo-"))
     env = {**os.environ, "PORT": str(PORT), "TRAPKEY_DATA": str(data_dir / "data.json")}
 
     print(f"starting server on {BASE} (data: {data_dir})")

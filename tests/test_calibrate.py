@@ -213,7 +213,7 @@ class CalibrationKFitsEstimateTests(unittest.TestCase):
 @unittest.skipUnless(os.path.exists(NOTEPAD), "no Windows binaries")
 class CliTests(unittest.TestCase):
     def test_static_mode_over_a_directory(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-cal-")
+        tmp = tempfile.mkdtemp(prefix="revscan-cal-")
         try:
             shutil.copy(NOTEPAD, Path(tmp) / "a.exe")
             if os.path.exists(HOSTNAME):
@@ -237,7 +237,7 @@ class CliTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_empty_directory_exits_two(self):
-        tmp = tempfile.mkdtemp(prefix="trapkey-cal-empty-")
+        tmp = tempfile.mkdtemp(prefix="revscan-cal-empty-")
         try:
             proc = subprocess.run(
                 [sys.executable, str(ROOT / "calibrate.py"), tmp],

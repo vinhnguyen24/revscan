@@ -1,5 +1,5 @@
 /*
- * TrapKey SDK - public API
+ * RevScan SDK - public API
  *
  * Vendor integration is three calls:
  *
@@ -43,7 +43,7 @@ typedef enum TK_Status {
 } TK_Status;
 
 /* Initialises the SDK and tries to load a cached license.
- *   productId    : "prd_xxxxxxxx" from the TrapKey dashboard
+ *   productId    : "prd_xxxxxxxx" from the RevScan dashboard
  *   modulusB64Url: verifyKey.n  (base64url)
  *   exponentHex  : verifyKey.e  (hex, usually "010001")
  *   serverUrl    : base URL, e.g. "https://license.vendor.com"; may be NULL for
@@ -58,7 +58,7 @@ TK_API TK_Status TK_Init(const char* productId,
 TK_API TK_Status TK_IsLicensed(void);
 
 /* Activates a key on this machine. Requires TK_Init() with a serverUrl.
- * The resulting blob is verified locally and cached under %APPDATA%\TrapKey. */
+ * The resulting blob is verified locally and cached under %APPDATA%\RevScan. */
 TK_API TK_Status TK_Activate(const char* key);
 
 /* Optional: re-validate against the server (picks up revocations early and

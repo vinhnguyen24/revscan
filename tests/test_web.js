@@ -16,7 +16,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'trapkey-web-'));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'revscan-web-'));
 process.env.DATA_DIR = TMP;
 process.env.ADMIN_KEY = 'test-admin-key';
 process.env.TRAPKEY_NO_DOTENV = '1';
@@ -288,7 +288,7 @@ test('authenticated scan is stored under the account', async () => {
 });
 
 test('retention cleanup drops expired auth and stale rows, keeps accounts and fresh scans', async () => {
-  const { db } = server.trapkey;
+  const { db } = server.revscan;
   const account = db.prepare("SELECT * FROM accounts WHERE email='dev@studio.test'").get();
   assert.ok(account, 'login test must have created the account');
   const nowMs = Date.now();
@@ -346,7 +346,7 @@ test('retention cleanup drops expired auth and stale rows, keeps accounts and fr
     'INSERT INTO ledger (id, account_id, delta, bucket, reason, ref, created_at) VALUES (?,?,?,?,?,?,?)'
   ).run('led_retention_probe', account.id, 1, 'static', 'retention probe', null, oldMs);
 
-  const counts = server.trapkey.cleanup(nowMs);
+  const counts = server.revscan.cleanup(nowMs);
   assert.ok(counts.sessions >= 1, 'expired session deleted');
   assert.ok(counts.magic_links >= 2, 'expired and used>24h magic links deleted');
   assert.ok(counts.scans >= 1, 'old scan deleted');
@@ -388,7 +388,7 @@ test('same file again is served from cache and costs nothing', async () => {
   const grab = (html) => Number(/stat-num">(\d+)<\/div>\s*<div class="stat-label">static/.exec(html)?.[1]);
   assert.equal(grab(before), grab(after), 'credits must not change on a cache hit');
 
-  const { db } = server.trapkey;
+  const { db } = server.revscan;
   const account = db.prepare("SELECT id FROM accounts WHERE email='dev@studio.test'").get();
   const hits = db
     .prepare("SELECT COUNT(*) AS c FROM events WHERE type='cache_hit' AND account_id=?")
@@ -507,11 +507,11 @@ test('admin page shows recent scans and the real cache-hit count', async () => {
   assert.equal(page.status, 200);
   assert.match(page.text, /Scan gần đây/, 'the scan table must be rendered');
 
-  const latest = server.trapkey.db.prepare('SELECT id FROM scans ORDER BY created_at DESC LIMIT 1').get();
+  const latest = server.revscan.db.prepare('SELECT id FROM scans ORDER BY created_at DESC LIMIT 1').get();
   assert.ok(latest, 'expected at least one scan');
   assert.ok(page.text.includes(latest.id), 'the most recent scan id is listed');
 
-  const hits = server.trapkey.db.prepare("SELECT COUNT(*) AS c FROM events WHERE type='cache_hit'").get().c;
+  const hits = server.revscan.db.prepare("SELECT COUNT(*) AS c FROM events WHERE type='cache_hit'").get().c;
   assert.ok(hits >= 1, 'the cache test wrote a cache_hit event');
   const shown = Number(
     /stat-num">(\d+)<\/div>\s*<div class="stat-label">cache hits/.exec(page.text)?.[1]
@@ -567,7 +567,7 @@ test('account deletion removes the email from magic links and events', async () 
   assert.equal(del.status, 303);
   cookie = savedCookie;
 
-  const { db } = server.trapkey;
+  const { db } = server.revscan;
   assert.equal(db.prepare('SELECT COUNT(*) AS c FROM accounts WHERE email=?').get(email).c, 0);
   assert.equal(
     db.prepare('SELECT COUNT(*) AS c FROM magic_links WHERE email=?').get(email).c,
@@ -588,7 +588,7 @@ test('upload sweeper survives a missing directory and removes old files', async 
   fs.writeFileSync(old, 'x');
   const past = Date.now() - 2 * 3_600_000;
   fs.utimesSync(old, past / 1000, past / 1000);
-  server.trapkey.sweepUploads(3_600_000);
+  server.revscan.sweepUploads(3_600_000);
   assert.equal(fs.existsSync(old), false, 'an upload older than the sweep window is deleted');
 
   // A deleted/unmounted DATA_DIR used to throw from the interval callback and
@@ -596,7 +596,7 @@ test('upload sweeper survives a missing directory and removes old files', async 
   const parked = `${dir}.parked`;
   fs.renameSync(dir, parked);
   try {
-    assert.doesNotThrow(() => server.trapkey.sweepUploads(3_600_000));
+    assert.doesNotThrow(() => server.revscan.sweepUploads(3_600_000));
   } finally {
     fs.renameSync(parked, dir);
   }
@@ -891,10 +891,10 @@ test('AI quota errors are reported as AI_QUOTA and refund the credit', async () 
 
     // One quota 429 must stop the whole deployment from spawning engines that
     // discover the same 429. The window comes from the provider's retry-after.
-    assert.equal(server.trapkey.ai.coolingDown(), true);
-    assert.ok(server.trapkey.ai.until() > Date.now(), 'cooldown has a deadline');
+    assert.equal(server.revscan.ai.coolingDown(), true);
+    assert.ok(server.revscan.ai.until() > Date.now(), 'cooldown has a deadline');
     assert.ok(
-      server.trapkey.ai.until() <= Date.now() + 3_600_000 + 5_000,
+      server.revscan.ai.until() <= Date.now() + 3_600_000 + 5_000,
       'a provider-controlled value must not pause AI for more than an hour'
     );
 
@@ -913,8 +913,8 @@ test('AI quota errors are reported as AI_QUOTA and refund the credit', async () 
     );
 
     // Reset while the stub provider is still configured: the radio comes back.
-    server.trapkey.ai.reset();
-    assert.equal(server.trapkey.ai.coolingDown(), false);
+    server.revscan.ai.reset();
+    assert.equal(server.revscan.ai.coolingDown(), false);
     assert.doesNotMatch((await call('GET', '/scan')).text, /value="ai"\s+disabled/);
   } finally {
     if (savedBase === undefined) delete process.env.OPENAI_BASE_URL;
@@ -1011,7 +1011,7 @@ test('compare page escapes the measured model', () => {
 });
 
 test('one-time audit pass expires to free after 30 days without renewing', () => {
-  const { db } = server.trapkey;
+  const { db } = server.revscan;
   const credits = require('../web/credits');
   const account = db.prepare("SELECT * FROM accounts WHERE email='other@studio.test'").get();
   assert.ok(account);
@@ -1158,7 +1158,7 @@ test('interactive demo gallery and /compare?demo=1 work end to end', async () =>
   console.log(`\n${tests.length - failed - skipped} passed, ${failed} failed, ${skipped} skipped`);
   server.close();
   try {
-    server.trapkey?.db?.close();
+    server.revscan?.db?.close();
   } catch {}
   try {
     fs.rmSync(TMP, { recursive: true, force: true });

@@ -93,7 +93,7 @@ function runCompareReports(beforePath, afterPath, timeoutMs = config.compareTime
   }
   activeEngines += 1;
 
-  const cli = config.cli || path.join(config.root, 'cli', 'trapkey.py');
+  const cli = config.cli || path.join(config.root, 'cli', 'revscan.py');
   return new Promise((resolve, reject) => {
     const child = spawn(config.python, [cli, 'compare-reports', beforePath, afterPath, '--json'], {
       cwd: config.root,

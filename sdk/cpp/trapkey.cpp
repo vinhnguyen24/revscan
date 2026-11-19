@@ -1,11 +1,11 @@
 /*
- * TrapKey SDK - implementation (Windows, C++17, zero third-party dependencies)
+ * RevScan SDK - implementation (Windows, C++17, zero third-party dependencies)
  *
  * Crypto: RSA-2048/PKCS#1 v1.5/SHA-256 via CNG (bcrypt.dll).
  * Network: WinHTTP (only used by Activate/Refresh/Deactivate).
  *
  * Build:
- *   cl /std:c++17 /EHsc /O2 /DTK_BUILD_DLL /LD trapkey.cpp /link bcrypt.lib winhttp.lib advapi32.lib
+ *   cl /std:c++17 /EHsc /O2 /DTK_BUILD_DLL /LD revscan.cpp /link bcrypt.lib winhttp.lib advapi32.lib
  */
 
 #define WIN32_LEAN_AND_MEAN
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-#include "trapkey.h"
+#include "revscan.h"
 
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "winhttp.lib")
@@ -301,7 +301,7 @@ std::string AppDataDir() {
         }
     }
     if (base.empty()) base = ".";
-    return base + "\\TrapKey";
+    return base + "\\RevScan";
 }
 
 bool ReadFileToString(const std::string& path, std::string& out) {
@@ -473,7 +473,7 @@ bool HttpPostJson(const std::string& url, const std::string& body, int& statusOu
         return false;
     }
 
-    HINTERNET session = WinHttpOpen(L"TrapKey/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    HINTERNET session = WinHttpOpen(L"RevScan/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!session) {
         SetError(TK_ERR_NETWORK, "WinHttpOpen failed");

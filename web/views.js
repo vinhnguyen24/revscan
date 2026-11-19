@@ -128,9 +128,9 @@ function layout({
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} · TrapKey</title>
+<title>${esc(title)} · RevScan</title>
 <meta name="description" content="${esc(desc)}">
-<meta property="og:title" content="${esc(title)} · TrapKey">
+<meta property="og:title" content="${esc(title)} · RevScan">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:type" content="website">
 <link rel="stylesheet" href="${assetUrl('app.css')}">
@@ -142,7 +142,7 @@ function layout({
 <a class="skip-link" href="#main-content">${esc(t(L, 'skipLink'))}</a>
 <div class="nav-wrap">
   <header class="nav">
-    <a class="brand" href="/"><span class="brand-dot" aria-hidden="true"></span>TrapKey</a>
+    <a class="brand" href="/"><span class="brand-dot" aria-hidden="true"></span>RevScan</a>
     <nav class="nav-links" aria-label="Primary">${navHtml}</nav>
     <div class="nav-right">
       <button class="theme-btn" id="themeToggle" type="button" aria-label="${esc(t(L, 'themeToggle'))}" aria-pressed="false">${ICON_THEME}</button>
@@ -158,7 +158,7 @@ function layout({
 <main id="main-content">${body}</main>
 <footer class="foot">
   <div>
-    <strong>TrapKey</strong> — ${esc(t(L, 'footerTagline'))}
+    <strong>RevScan</strong> — ${esc(t(L, 'footerTagline'))}
     <span class="muted">${esc(t(L, 'footerNotice'))}</span>
   </div>
   <div class="muted">
