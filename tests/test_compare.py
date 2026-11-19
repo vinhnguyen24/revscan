@@ -365,6 +365,8 @@ class CompareReportsTests(unittest.TestCase):
 class CompareCliTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if not os.path.exists(NOTEPAD):
+            raise unittest.SkipTest("no Windows binary")
         cls.tmp = Path(tempfile.mkdtemp(prefix="revscan-compare-"))
         cls.src = cls.tmp / "app.exe"
         cls.protected = cls.tmp / "app.protected.exe"
